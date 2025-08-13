@@ -1,0 +1,46 @@
+# Environment variables and config
+config.env
+.env
+
+# Google OAuth tokens and credentials
+token.json
+credentials.json
+
+# Log files
+*.log
+logs/
+sent_emails.log
+email_thread_history.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache/
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Data files (might contain sensitive info)
+data/*.xlsx
+*.csv
+
+# Backup files
+*.bak
+*.backup
+data/collections_tracking_enhanced.json 

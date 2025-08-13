@@ -1,0 +1,876 @@
+"""
+Bulk Email Management Service
+Handles batch email processing with approval workflow and test mode
+"""
+
+import pandas as pd
+import json
+import os
+import re
+import time
+import random
+import logging
+from datetime import datetime, timedelta
+from typing import List, Dict, Optional, Tuple
+import pytz
+
+logger = logging.getLogger(__name__)
+
+
+class BulkEmailService:
+    """Service for bulk email processing with approval workflow"""
+    
+    def __init__(self, gmail_service, case_manager, ai_service, collections_tracker=None):
+        self.gmail_service = gmail_service
+        self.case_manager = case_manager
+        self.ai_service = ai_service
+        self.collections_tracker = collections_tracker
+        
+        # Test mode configuration
+        self.test_mode = False
+        self.test_email = "deanh.transcon@gmail.com"
+        
+        # Initialize priority scoring
+        self.firm_scores_file = "data/firm_intelligence.json"
+        self.firm_scores = self.load_firm_scores()
+        
+        # Email generation templates
+        self.greetings = [
+            "Hello Law Firm,", "Good day Law Firm,", "Greetings Law Firm,",
+            "Hi Law Firm,", "Dear Law Firm,"
+        ]
+        
+        self.status_requests = [
+            "Has this case settled or is it still pending?",
+            "Can you let me know the current status of this case?",
+            "Do you happen to have an update on this case?",
+            "Is this matter still open or has it been resolved?",
+            "Could you please confirm whether the case is resolved or still pending?"
+        ]
+        
+        self.followups = [
+            "Let me know if you need bills or reports.",
+            "If you need any reports or billing, just let me know.",
+            "Feel free to reach out if any bills or documentation are needed.",
+            "I'm happy to provide any necessary documents or reports you may need.",
+            "We can send over any billing or medical records you might need."
+        ]
+        
+        # Track sent PIDs in this session
+        self.session_sent_pids = set()
+        self.load_sent_pids()
+        
+        # Email queue for batch processing
+        self.email_queue = []
+        self.categorized_cases = {}
+    
+    def load_sent_pids(self):
+        """Load already sent PIDs from log file"""
+        self.sent_pids = set()
+        log_file = "logs/sent_emails.log"
+        
+        if os.path.exists(log_file):
+            try:
+                with open(log_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        # Extract PID from log entries
+                        match = re.search(r"PV:\s*(\d+)", line)
+                        if match:
+                            self.sent_pids.add(match.group(1))
+                logger.info(f"Loaded {len(self.sent_pids)} sent PIDs from log")
+            except Exception as e:
+                logger.error(f"Error loading sent PIDs: {e}")
+    
+    def load_firm_scores(self):
+        """Load historical firm performance data for priority scoring"""
+        if os.path.exists(self.firm_scores_file):
+            try:
+                with open(self.firm_scores_file, 'r') as f:
+                    return json.load(f)
+            except:
+                return {}
+        return {}
+    
+    def calculate_case_priority(self, case_data: Dict) -> int:
+        """
+        Calculate priority score (0-100) for a case based on collection likelihood
+        
+        Scoring factors:
+        - Firm responsiveness history (0-40 points)
+        - Case age sweet spot (0-30 points)
+        - Days since last contact (0-20 points)
+        - Case value if available (0-10 points)
+        """
+        score = 0
+        
+        # 1. Firm responsiveness (0-40 points)
+        firm_email = case_data.get('attorney_email', '').lower()
+        if firm_email and firm_email in self.firm_scores:
+            firm_data = self.firm_scores[firm_email]
+            response_rate = firm_data.get('response_rate', 0.5)
+            score += int(response_rate * 40)
+        else:
+            score += 20  # Default middle score for unknown firms
+        
+        # 2. Case age sweet spot (0-30 points) - Best: 6-18 months old
+        doi_raw = case_data.get('doi')
+        if doi_raw and str(doi_raw) != "nan" and str(doi_raw) != "NaT":
+            try:
+                if hasattr(doi_raw, 'date'):
+                    doi_date = doi_raw
+                else:
+                    doi_date = pd.to_datetime(str(doi_raw))
+                
+                months_old = (datetime.now() - doi_date).days / 30
+                
+                if 6 <= months_old <= 18:
+                    score += 30  # Perfect age
+                elif 3 <= months_old < 6:
+                    score += 20  # Good but young
+                elif 18 < months_old <= 24:
+                    score += 20  # Good but aging
+                elif 24 < months_old <= 36:
+                    score += 10  # Getting old
+                # Too young (<3 months) or too old (>36 months) get 0
+            except:
+                score += 15  # Default for problematic dates
+        
+        # 3. Days since last contact (0-20 points)
+        # Use collections tracker if available
+        if self.collections_tracker:
+            try:
+                activity = self.collections_tracker.get_case_activity(case_data.get('pv'))
+                if activity:
+                    days_since = activity.get('days_since_last_contact')
+                    if days_since:
+                        if 20 <= days_since <= 40:
+                            score += 20  # Perfect follow-up window
+                        elif 40 < days_since <= 60:
+                            score += 15  # Good follow-up window
+                        elif 60 < days_since <= 90:
+                            score += 10  # Needs attention
+                        elif days_since > 90:
+                            score += 5   # Long overdue
+                        # Too recent (<20 days) gets 0 - don't pester
+                    else:
+                        score += 20  # Never contacted - high priority
+            except:
+                score += 10  # Default if tracker fails
+        else:
+            score += 10  # Default without tracker
+        
+        # 4. Case value (0-10 points) - if available
+        # Could be added if billing amount is in the spreadsheet
+        
+        return min(score, 100)  # Cap at 100
+    
+    def update_firm_score(self, firm_email: str, responded: bool = False, paid: bool = False):
+        """Update firm intelligence based on interactions"""
+        firm_email = firm_email.lower()
+        
+        if firm_email not in self.firm_scores:
+            self.firm_scores[firm_email] = {
+                'emails_sent': 0,
+                'responses': 0,
+                'payments': 0,
+                'response_rate': 0,
+                'payment_rate': 0,
+                'last_updated': datetime.now().isoformat()
+            }
+        
+        firm_data = self.firm_scores[firm_email]
+        firm_data['emails_sent'] += 1
+        
+        if responded:
+            firm_data['responses'] += 1
+        if paid:
+            firm_data['payments'] += 1
+        
+        # Update rates
+        if firm_data['emails_sent'] > 0:
+            firm_data['response_rate'] = firm_data['responses'] / firm_data['emails_sent']
+            firm_data['payment_rate'] = firm_data['payments'] / firm_data['emails_sent']
+        
+        firm_data['last_updated'] = datetime.now().isoformat()
+        
+        # Save updated scores
+        os.makedirs(os.path.dirname(self.firm_scores_file), exist_ok=True)
+        with open(self.firm_scores_file, 'w') as f:
+            json.dump(self.firm_scores, f, indent=2)
+    
+    def set_test_mode(self, enabled: bool, test_email: str = None):
+        """Enable or disable test mode"""
+        self.test_mode = enabled
+        if test_email:
+            self.test_email = test_email
+        
+        status = "ENABLED" if enabled else "DISABLED"
+        logger.info(f"Test mode {status}")
+        if enabled:
+            logger.info(f"Test emails will be sent to: {self.test_email}")
+        
+        return f"Test mode {status.lower()}. " + (f"Emails will go to: {self.test_email}" if enabled else "")
+    
+    def categorize_cases(self, active_only: bool = True) -> Dict:
+        """Categorize cases for bulk processing"""
+        try:
+            df = self.case_manager.df
+            
+            categories = {
+                "no_recent_contact": [],
+                "missing_doi": [],
+                "old_cases": [],
+                "by_firm": {},
+                "never_contacted": [],
+                "high_value": [],  # Cases with high potential value
+                "ready_to_close": [],  # Cases that might be ready for settlement
+                "high_priority": [],  # Score 70-100
+                "medium_priority": [],  # Score 40-69
+                "low_priority": []  # Score 0-39
+            }
+            
+            for _, row in df.iterrows():
+                case_info = self.case_manager.format_case(row)
+                
+                # Skip if not active (if filtering)
+                if active_only:
+                    status = str(case_info.get("Status", "")).lower()
+                    if status != "active":
+                        continue
+                
+                pv = str(case_info.get("PV", ""))
+                
+                # Skip already sent cases
+                if pv in self.sent_pids or pv in self.session_sent_pids:
+                    continue
+                
+                # Create case data object
+                case_data = {
+                    "pv": pv,
+                    "name": case_info.get("Name", ""),
+                    "doi": case_info.get("DOI", ""),
+                    "cms": case_info.get("CMS", ""),
+                    "attorney_email": case_info.get("Attorney Email", ""),
+                    "law_firm": case_info.get("Law Firm", ""),
+                    "status": case_info.get("Status", ""),
+                    "full_case": case_info
+                }
+                
+                # Categorize by missing DOI
+                doi_raw = case_data["doi"]
+                doi_str = str(doi_raw) if doi_raw else ""
+                
+                if "2099" in doi_str or not doi_raw or doi_str == "nan" or doi_str == "NaT":
+                    categories["missing_doi"].append(case_data)
+                
+                # Categorize by firm
+                firm_email = case_data["attorney_email"]
+                if firm_email and "@" in firm_email:
+                    if firm_email not in categories["by_firm"]:
+                        categories["by_firm"][firm_email] = []
+                    categories["by_firm"][firm_email].append(case_data)
+                
+                # Check for old cases (>2 years)
+                if doi_raw and doi_str != "2099" and doi_str != "nan" and doi_str != "NaT":
+                    try:
+                        # Handle datetime object or string
+                        if hasattr(doi_raw, 'year'):
+                            # It's already a datetime object
+                            doi_date = doi_raw
+                        else:
+                            # Parse string to datetime
+                            doi_str_clean = doi_str.split()[0] if ' ' in doi_str else doi_str
+                            doi_date = pd.to_datetime(doi_str_clean)
+                        
+                        years_old = (datetime.now() - doi_date).days / 365
+                        if years_old > 2:
+                            categories["old_cases"].append(case_data)
+                    except:
+                        pass
+                
+                # Use collections tracker data if available
+                if self.collections_tracker:
+                    try:
+                        activity = self.collections_tracker.get_case_activity(pv)
+                        if activity:
+                            days_since = activity.get("days_since_last_contact")
+                            if days_since and days_since > 60:
+                                categories["no_recent_contact"].append(case_data)
+                            elif not activity.get("last_contact_date"):
+                                categories["never_contacted"].append(case_data)
+                    except:
+                        pass
+                
+                # Calculate priority score for each case
+                priority_score = self.calculate_case_priority(case_data)
+                case_data["priority_score"] = priority_score
+                
+                # Categorize by priority
+                if priority_score >= 70:
+                    categories["high_priority"].append(case_data)
+                elif priority_score >= 40:
+                    categories["medium_priority"].append(case_data)
+                else:
+                    categories["low_priority"].append(case_data)
+            
+            self.categorized_cases = categories
+            
+            # Sort priority categories by score (highest first)
+            for priority_cat in ["high_priority", "medium_priority", "low_priority"]:
+                categories[priority_cat].sort(key=lambda x: x.get("priority_score", 0), reverse=True)
+            
+            # Log category statistics
+            logger.info("Case categorization complete:")
+            logger.info(f"  🔴 High Priority (70-100): {len(categories['high_priority'])}")
+            logger.info(f"  🟡 Medium Priority (40-69): {len(categories['medium_priority'])}")
+            logger.info(f"  🟢 Low Priority (0-39): {len(categories['low_priority'])}")
+            logger.info(f"  Missing DOI: {len(categories['missing_doi'])}")
+            logger.info(f"  Old cases: {len(categories['old_cases'])}")
+            logger.info(f"  No recent contact: {len(categories['no_recent_contact'])}")
+            logger.info(f"  Never contacted: {len(categories['never_contacted'])}")
+            logger.info(f"  Unique firms: {len(categories['by_firm'])}")
+            
+            return categories
+            
+        except Exception as e:
+            logger.error(f"Error categorizing cases: {e}")
+            raise
+    
+    def generate_email_content(self, case_data: Dict) -> Dict:
+        """Generate email content for a case"""
+        try:
+            name = case_data["name"].title() if case_data["name"] else "UNKNOWN"
+            
+            # Handle DOI as either string or datetime object
+            doi_raw = case_data["doi"]
+            doi = ""
+            
+            if doi_raw and str(doi_raw) != "nan" and str(doi_raw) != "NaT":
+                # Check if it's a datetime object
+                if hasattr(doi_raw, 'strftime'):
+                    # It's a datetime object
+                    doi = doi_raw.strftime("%m/%d/%Y")
+                else:
+                    # It's a string
+                    doi_str = str(doi_raw)
+                    # Extract just the date part if it contains time
+                    doi = doi_str.split()[0] if doi_str else ""
+            
+            pv = case_data["pv"]
+            attorney_email = case_data["attorney_email"]
+            
+            # Random selection for variety
+            greeting = random.choice(self.greetings)
+            status_line = random.choice(self.status_requests)
+            followup_line = random.choice(self.followups)
+            
+            # Subject line based on DOI availability
+            if "2099" in str(doi) or not doi:
+                subject = f"{name} UNKNOWN DOI // Prohealth Advanced Imaging"
+                extra_line = "\n\nCould you please provide the accurate date of loss for this case?"
+            else:
+                subject = f"{name} DOI {doi} // Prohealth Advanced Imaging"
+                extra_line = ""
+            
+            # Modify for test mode
+            original_to = attorney_email
+            if self.test_mode:
+                attorney_email = self.test_email
+                subject = f"[TEST MODE - Original To: {original_to}] {subject}"
+            
+            # Email body
+            body = f"""{greeting}
+
+In regards to Prohealth Advanced Imaging billing and liens for {name}.
+
+{status_line} {followup_line}{extra_line}
+
+Thank you.
+
+Reference #: {pv}
+
+Best regards,
+Dean Hyland
+Prohealth Advanced Imaging
+(909) 219-6008"""
+            
+            return {
+                "pv": pv,
+                "to": attorney_email,
+                "original_to": original_to if self.test_mode else attorney_email,
+                "subject": subject,
+                "body": body,
+                "name": name,
+                "doi": doi,
+                "case_data": case_data
+            }
+            
+        except Exception as e:
+            logger.error(f"Error generating email for case {case_data.get('pv')}: {e}")
+            raise
+    
+    def prepare_batch(self, category: str, subcategory: str = None, limit: int = None) -> List[Dict]:
+        """Prepare a batch of emails for review and approval"""
+        try:
+            emails = []
+            
+            if category == "by_firm" and subcategory:
+                # Get cases for specific firm
+                cases = self.categorized_cases.get("by_firm", {}).get(subcategory, [])
+            else:
+                # Get cases for category
+                cases = self.categorized_cases.get(category, [])
+            
+            # Apply limit if specified
+            if limit:
+                cases = cases[:limit]
+            
+            # Generate email content for each case
+            for case in cases:
+                try:
+                    email = self.generate_email_content(case)
+                    emails.append(email)
+                except Exception as e:
+                    logger.error(f"Error generating email for case {case.get('pv')}: {e}")
+                    continue
+            
+            self.email_queue = emails
+            return emails
+            
+        except Exception as e:
+            logger.error(f"Error preparing batch: {e}")
+            raise
+    
+    def display_batch_preview(self, emails: List[Dict]) -> str:
+        """Display preview of email batch"""
+        output = []
+        output.append(f"\n📧 BATCH PREVIEW - {len(emails)} emails")
+        output.append("=" * 60)
+        
+        if self.test_mode:
+            output.append(f"⚠️  TEST MODE: All emails will be sent to {self.test_email}")
+            output.append("")
+        
+        for i, email in enumerate(emails[:10], 1):  # Show first 10
+            output.append(f"[{i}] PV: {email['pv']} - {email['name']}")
+            output.append(f"    To: {email['to']}")
+            if self.test_mode:
+                output.append(f"    (Original: {email['original_to']})")
+            output.append(f"    Subject: {email['subject'][:50]}...")
+            output.append(f"    DOI: {email['doi'] or 'UNKNOWN'}")
+            output.append("")
+        
+        if len(emails) > 10:
+            output.append(f"... and {len(emails) - 10} more emails")
+        
+        return "\n".join(output)
+    
+    def get_approval_for_batch(self, emails: List[Dict]) -> Tuple[List[Dict], str]:
+        """Interactive approval process for email batch"""
+        approved = []
+        action = ""
+        
+        print(self.display_batch_preview(emails))
+        
+        print("\n" + "=" * 60)
+        print("BATCH APPROVAL OPTIONS:")
+        print("  [A] Approve ALL and send")
+        print("  [S] Select specific emails to send (by number)")
+        print("  [R] Review individual emails in detail")
+        print("  [E] Edit email template and regenerate")
+        print("  [X] Skip this entire batch")
+        print("=" * 60)
+        
+        choice = input("\nYour choice: ").strip().upper()
+        
+        if choice == "A":
+            approved = emails
+            action = "approved_all"
+            
+        elif choice == "S":
+            print("\nEnter email numbers to send (e.g., 1,3,5-8,10):")
+            selection = input("Selection: ").strip()
+            
+            selected_indices = []
+            for part in selection.split(","):
+                if "-" in part:
+                    start, end = map(int, part.split("-"))
+                    selected_indices.extend(range(start-1, end))
+                else:
+                    selected_indices.append(int(part)-1)
+            
+            approved = [emails[i] for i in selected_indices if 0 <= i < len(emails)]
+            action = "selected"
+            
+        elif choice == "R":
+            # Individual review
+            for i, email in enumerate(emails, 1):
+                print(f"\n[{i}/{len(emails)}] Review Email:")
+                print("-" * 40)
+                print(f"To: {email['to']}")
+                print(f"Subject: {email['subject']}")
+                print(f"\n{email['body']}")
+                print("-" * 40)
+                
+                approve = input("Send this email? (Y/n/skip remaining): ").strip().lower()
+                if approve == "y" or approve == "":
+                    approved.append(email)
+                elif approve == "skip":
+                    break
+            
+            action = "reviewed"
+            
+        else:
+            action = "skipped"
+        
+        return approved, action
+    
+    def send_batch(self, emails: List[Dict], add_cms_notes: bool = True) -> Dict:
+        """Send approved batch of emails"""
+        results = {
+            "sent": [],
+            "failed": [],
+            "total": len(emails)
+        }
+        
+        try:
+            print(f"\n🚀 Sending {len(emails)} emails...")
+            if self.test_mode:
+                print(f"⚠️  TEST MODE: All emails going to {self.test_email}")
+            
+            for i, email in enumerate(emails, 1):
+                try:
+                    # Send email using Gmail service
+                    msg_id = self.gmail_service.send_email(
+                        email["to"],
+                        email["subject"],
+                        email["body"]
+                    )
+                    
+                    if self.test_mode:
+                        print(f"✅ [{i}/{len(emails)}] TEST SENT to {email['to']} (PV: {email['pv']})")
+                        print(f"    (Original recipient: {email.get('original_to', 'N/A')})")
+                    else:
+                        print(f"✅ [{i}/{len(emails)}] Sent to {email['to']} (PV: {email['pv']})")
+                    
+                    # Only update tracking if NOT in test mode
+                    if not self.test_mode:
+                        # Log success to permanent logs
+                        self.log_sent_email(email, msg_id)
+                        
+                        # Track in session
+                        self.session_sent_pids.add(email['pv'])
+                        
+                        # Add CMS note for production
+                        if add_cms_notes:
+                            try:
+                                self.add_cms_note(email["case_data"], "bulk_status_request", email["to"])
+                            except Exception as e:
+                                logger.error(f"Failed to add CMS note for PV {email['pv']}: {e}")
+                    else:
+                        # In test mode, log to test log (doesn't affect tracking)
+                        self.log_test_email(email, msg_id)
+                        
+                        # Add CMS note for test mode (marked as TEST)
+                        if add_cms_notes:
+                            try:
+                                # Add test CMS note with special marker
+                                # Pass the original recipient, not the test email
+                                original_recipient = email.get("original_to", email["to"])
+                                self.add_cms_test_note(email["case_data"], original_recipient)
+                            except Exception as e:
+                                logger.error(f"Failed to add TEST CMS note for PV {email['pv']}: {e}")
+                    
+                    # Add to results (for both test and production)
+                    results["sent"].append({
+                        "pv": email["pv"],
+                        "to": email["to"],
+                        "msg_id": msg_id,
+                        "test_mode": self.test_mode
+                    })
+                    
+                    # Brief delay between sends
+                    time.sleep(2)
+                    
+                except Exception as e:
+                    print(f"❌ [{i}/{len(emails)}] Failed PV {email['pv']}: {e}")
+                    logger.error(f"Failed to send email for PV {email['pv']}: {e}")
+                    results["failed"].append({
+                        "pv": email["pv"],
+                        "error": str(e)
+                    })
+            
+            # Summary
+            print(f"\n📊 Batch Complete:")
+            if self.test_mode:
+                print(f"   🧪 TEST MODE - Categories preserved")
+                print(f"   📝 TEST CMS notes queued for processing")
+            print(f"   ✅ Sent: {len(results['sent'])}")
+            print(f"   ❌ Failed: {len(results['failed'])}")
+            
+            # Remind about CMS notes if any were added
+            if len(results['sent']) > 0 and add_cms_notes:
+                print("\n⚠️  REMINDER: CMS notes are queued for batch processing")
+                print("   Run 'add session cms notes' command to add them to CMS")
+            
+            # Only invalidate stale cache if NOT in test mode
+            # This preserves categories for test runs
+            if self.collections_tracker and len(results["sent"]) > 0 and not self.test_mode:
+                self.collections_tracker.invalidate_stale_case_cache()
+                print("🔄 Case categories refreshed")
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error sending batch: {e}")
+            raise
+    
+    def log_sent_email(self, email: Dict, msg_id: str):
+        """Log sent email to file (production only)"""
+        try:
+            from utils.logging_config import log_sent_email
+            
+            # Use existing logging function
+            log_sent_email(
+                email["pv"],
+                email["to"],
+                email["subject"],
+                msg_id
+            )
+                
+        except Exception as e:
+            logger.error(f"Error logging sent email: {e}")
+    
+    def log_test_email(self, email: Dict, msg_id: str):
+        """Log test email to separate test log file"""
+        try:
+            test_log_file = "logs/test_emails.log"
+            os.makedirs(os.path.dirname(test_log_file), exist_ok=True)
+            
+            log_entry = (
+                f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+                f"TEST MODE | PV: {email['pv']} | "
+                f"Test To: {email['to']} | "
+                f"Original To: {email.get('original_to', 'N/A')} | "
+                f"Subject: {email['subject']} | "
+                f"Gmail ID: {msg_id}\n"
+            )
+            
+            with open(test_log_file, "a", encoding="utf-8") as f:
+                f.write(log_entry)
+            
+            logger.info(f"TEST MODE: Email for PV {email['pv']} logged to test log")
+            
+        except Exception as e:
+            logger.error(f"Error logging test email: {e}")
+    
+    def add_cms_note(self, case: Dict, note_type: str, recipient: str):
+        """Add CMS note for sent email"""
+        try:
+            from services.cms_integration import add_cms_note_for_email
+            import asyncio
+            
+            # Run async CMS note addition
+            success = asyncio.run(add_cms_note_for_email(case, note_type, recipient))
+            
+            if success:
+                logger.info(f"CMS note added for PV {case.get('PV')}")
+            else:
+                logger.warning(f"Failed to add CMS note for PV {case.get('PV')}")
+                
+        except Exception as e:
+            logger.error(f"Error adding CMS note: {e}")
+    
+    def add_cms_test_note(self, case: Dict, original_recipient: str):
+        """Add CMS note for test email (marked as TEST)"""
+        try:
+            from services.cms_integration import add_cms_note_for_email
+            import asyncio
+            
+            # Need to make sure we have the right case structure
+            # The case might have lowercase keys from bulk processing
+            test_case = {
+                "CMS": case.get("cms") or case.get("CMS") or case.get("pv") or case.get("PV"),
+                "PV": case.get("pv") or case.get("PV"),
+                "Name": case.get("name") or case.get("Name"),
+                "DOI": case.get("doi") or case.get("DOI")
+            }
+            
+            # Create detailed test mode description
+            test_description = f"TEST MODE - Email sent to {self.test_email} (intended for {original_recipient})"
+            
+            # Add TEST marker to the note type
+            success = asyncio.run(add_cms_note_for_email(
+                test_case, 
+                "test_bulk_status_request",  # Special test note type
+                test_description
+            ))
+            
+            if success:
+                logger.info(f"TEST CMS note queued for PV {test_case.get('PV')}")
+                print(f"📝 TEST CMS note queued for PV {test_case.get('PV')}")
+            else:
+                logger.warning(f"Failed to queue TEST CMS note for PV {test_case.get('PV')}")
+                print(f"⚠️  TEST CMS note queue failed for PV {test_case.get('PV')}")
+                
+        except Exception as e:
+            logger.error(f"Error adding TEST CMS note: {e}")
+            print(f"❌ TEST CMS note error: {e}")
+    
+    def get_statistics(self) -> Dict:
+        """Get current bulk processing statistics"""
+        # Count test emails sent
+        test_email_count = 0
+        if os.path.exists("logs/test_emails.log"):
+            try:
+                with open("logs/test_emails.log", "r", encoding="utf-8") as f:
+                    test_email_count = len(f.readlines())
+            except:
+                pass
+        
+        stats = {
+            "test_mode": self.test_mode,
+            "test_email": self.test_email if self.test_mode else None,
+            "session_sent_production": len(self.session_sent_pids),
+            "total_sent_production": len(self.sent_pids) + len(self.session_sent_pids),
+            "test_emails_sent": test_email_count,
+            "categories": {}
+        }
+        
+        if self.categorized_cases:
+            for category, cases in self.categorized_cases.items():
+                if category == "by_firm":
+                    stats["categories"][category] = {
+                        "firms": len(cases),
+                        "total_cases": sum(len(firm_cases) for firm_cases in cases.values())
+                    }
+                else:
+                    stats["categories"][category] = len(cases)
+        
+        return stats
+    
+    def prepare_batch_from_numbers(self, numbers: List[str]) -> List[Dict]:
+        """Prepare batch of emails from a list of PV or CMS numbers"""
+        try:
+            emails = []
+            not_found = []
+            already_sent = []
+            
+            df = self.case_manager.df
+            
+            for num in numbers:
+                num = num.strip()
+                if not num:
+                    continue
+                
+                # Search for matching case by PV or CMS
+                case_found = False
+                
+                # Try PV match first
+                pv_match = df[df['PV'].astype(str) == num]
+                if not pv_match.empty:
+                    case_found = True
+                    row = pv_match.iloc[0]
+                else:
+                    # Try CMS match
+                    cms_match = df[df['CMS'].astype(str) == num]
+                    if not cms_match.empty:
+                        case_found = True
+                        row = cms_match.iloc[0]
+                
+                if case_found:
+                    case_info = self.case_manager.format_case(row)
+                    pv = str(case_info.get("PV", ""))
+                    
+                    # Check if already sent
+                    if pv in self.sent_pids or pv in self.session_sent_pids:
+                        already_sent.append(f"{num} (PV: {pv})")
+                        continue
+                    
+                    # Create case data object
+                    case_data = {
+                        "pv": pv,
+                        "name": case_info.get("Name", ""),
+                        "doi": case_info.get("DOI", ""),
+                        "cms": case_info.get("CMS", ""),
+                        "attorney_email": case_info.get("Attorney Email", ""),
+                        "law_firm": case_info.get("Law Firm", ""),
+                        "status": case_info.get("Status", ""),
+                        "full_case": case_info
+                    }
+                    
+                    # Calculate priority score
+                    priority_score = self.calculate_case_priority(case_data)
+                    case_data["priority_score"] = priority_score
+                    
+                    # Generate email content
+                    try:
+                        email = self.generate_email_content(case_data)
+                        emails.append(email)
+                    except Exception as e:
+                        logger.error(f"Error generating email for {num}: {e}")
+                        not_found.append(f"{num} (error generating email)")
+                else:
+                    not_found.append(num)
+            
+            # Sort emails by priority score
+            emails.sort(key=lambda x: x.get("case_data", {}).get("priority_score", 0), reverse=True)
+            
+            # Report results
+            print(f"\n📊 Batch preparation results:")
+            print(f"   ✅ Found and prepared: {len(emails)} emails")
+            if already_sent:
+                print(f"   ⏭️  Already sent (skipped): {len(already_sent)}")
+                for item in already_sent[:5]:  # Show first 5
+                    print(f"      - {item}")
+                if len(already_sent) > 5:
+                    print(f"      ... and {len(already_sent) - 5} more")
+            if not_found:
+                print(f"   ❌ Not found: {len(not_found)}")
+                for item in not_found[:5]:  # Show first 5
+                    print(f"      - {item}")
+                if len(not_found) > 5:
+                    print(f"      ... and {len(not_found) - 5} more")
+            
+            self.email_queue = emails
+            return emails
+            
+        except Exception as e:
+            logger.error(f"Error preparing batch from numbers: {e}")
+            raise
+    
+    def export_batch_for_review(self, emails: List[Dict], filepath: str = None) -> str:
+        """Export batch to file for external review"""
+        try:
+            if not filepath:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filepath = f"data/bulk_batch_{timestamp}.json"
+            
+            export_data = {
+                "timestamp": datetime.now().isoformat(),
+                "test_mode": self.test_mode,
+                "count": len(emails),
+                "emails": [
+                    {
+                        "pv": e["pv"],
+                        "name": e["name"],
+                        "to": e["to"],
+                        "subject": e["subject"],
+                        "body": e["body"],
+                        "doi": e["doi"],
+                        "priority_score": e.get("case_data", {}).get("priority_score", 0)
+                    }
+                    for e in emails
+                ]
+            }
+            
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(export_data, f, indent=2)
+            
+            logger.info(f"Exported {len(emails)} emails to {filepath}")
+            return filepath
+            
+        except Exception as e:
+            logger.error(f"Error exporting batch: {e}")
+            raise
