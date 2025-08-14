@@ -26,3 +26,6 @@ playwright>=1.40.0
 PyQt5>=5.15.0
 pyqt5-tools>=5.15.0
 
+# Security (for credential encryption)
+cryptography>=41.0.0
+
