@@ -414,7 +414,62 @@ Prohealth Advanced Imaging
         try:
             emails = []
             
-            if category == "by_firm" and subcategory:
+            # Check if this is a stale case category
+            stale_categories = ["critical", "high_priority", "needs_follow_up", "no_response"]
+            
+            if category in stale_categories:
+                # Get stale cases from collections tracker
+                if self.collections_tracker:
+                    stale_data = self.collections_tracker.get_stale_cases_by_category(
+                        self.case_manager, category, limit=limit or 100
+                    )
+                    cases = stale_data.get("cases", [])
+                    
+                    # Convert stale case format to standard format and filter acknowledged
+                    from services.case_acknowledgment_service import CaseAcknowledgmentService
+                    ack_service = CaseAcknowledgmentService()
+                    
+                    formatted_cases = []
+                    for stale_case in cases:
+                        pv = stale_case.get("pv")
+                        
+                        # Skip acknowledged cases
+                        if ack_service.is_acknowledged(pv):
+                            logger.info(f"Skipping acknowledged case {pv}")
+                            continue
+                        
+                        formatted_case = {
+                            "pv": pv,
+                            "name": stale_case.get("name"),
+                            "doi": "",  # Will be fetched from case manager
+                            "cms": "",  # Will be fetched from case manager
+                            "attorney_email": stale_case.get("attorney_email"),
+                            "law_firm": stale_case.get("law_firm"),
+                            "status": "",
+                            "days_since_contact": stale_case.get("days_since_contact"),
+                            "response_count": stale_case.get("response_count", 0)
+                        }
+                        
+                        # Fetch full case details from case manager
+                        try:
+                            pv = stale_case.get("pv")
+                            df = self.case_manager.df
+                            case_row = df[df['PV'].astype(str) == str(pv)]
+                            if not case_row.empty:
+                                full_case = self.case_manager.format_case(case_row.iloc[0])
+                                formatted_case["doi"] = full_case.get("DOI", "")
+                                formatted_case["cms"] = full_case.get("CMS", "")
+                                formatted_case["full_case"] = full_case
+                        except:
+                            pass
+                        
+                        formatted_cases.append(formatted_case)
+                    
+                    cases = formatted_cases
+                else:
+                    logger.warning("Collections tracker not available for stale case categories")
+                    cases = []
+            elif category == "by_firm" and subcategory:
                 # Get cases for specific firm
                 cases = self.categorized_cases.get("by_firm", {}).get(subcategory, [])
             else:

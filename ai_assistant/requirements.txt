@@ -22,3 +22,7 @@ pytz>=2023.3
 # Web automation for CMS integration
 playwright>=1.40.0
 
+# GUI Framework
+PyQt5>=5.15.0
+pyqt5-tools>=5.15.0
+

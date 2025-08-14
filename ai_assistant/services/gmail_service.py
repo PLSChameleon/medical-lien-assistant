@@ -23,14 +23,20 @@ class GmailService:
         """Authenticate with Gmail API using OAuth2"""
         creds = None
         
-        if os.path.exists("token.json"):
-            creds = Credentials.from_authorized_user_file("token.json", Config.GMAIL_SCOPES)
+        # Look for token.json in the ai_assistant directory
+        token_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "token.json")
+        
+        if os.path.exists(token_path):
+            creds = Credentials.from_authorized_user_file(token_path, Config.GMAIL_SCOPES)
         
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 try:
                     creds.refresh(Request())
                     logger.info("Successfully refreshed Gmail credentials")
+                    # Save refreshed token
+                    with open(token_path, "w") as token:
+                        token.write(creds.to_json())
                 except Exception as e:
                     logger.error(f"Failed to refresh credentials: {e}")
                     raise Exception("Failed to refresh Gmail token. Please re-authenticate.")

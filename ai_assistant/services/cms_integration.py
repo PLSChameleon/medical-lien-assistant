@@ -118,7 +118,14 @@ def get_session_stats():
             notes_added_count = len([line for line in f if "CMS NOTE ADDED" in line])
     
     total_emails = pending_count + processed_count
-    return pending_count, processed_count, total_emails, notes_added_count
+    
+    # Return a dictionary instead of tuple for GUI compatibility
+    return {
+        'pending_count': pending_count,
+        'processed_count': processed_count,
+        'total_emails': total_emails,
+        'notes_added_count': notes_added_count
+    }
 
 def clear_session_logs():
     """Clear all session logs - use with caution!"""
@@ -857,7 +864,11 @@ async def process_session_cms_notes():
 # Function to get session statistics
 def show_session_status():
     """Show current session email and CMS note statistics with persistent state"""
-    pending_count, processed_count, total_emails, notes_added_count = get_session_stats()
+    stats = get_session_stats()
+    pending_count = stats['pending_count']
+    processed_count = stats['processed_count']
+    total_emails = stats['total_emails']
+    notes_added_count = stats['notes_added_count']
     
     logger.info(f"📊 PERSISTENT SESSION STATUS:")
     logger.info(f"   📧 Total emails sent: {total_emails}")
@@ -872,4 +883,5 @@ def show_session_status():
     else:
         logger.info(f"   🎉 All emails have CMS notes added!")
     
-    return pending_count, processed_count, total_emails, notes_added_count
+    # Return the stats dictionary for consistency
+    return stats

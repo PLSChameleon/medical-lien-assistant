@@ -8,7 +8,13 @@ class CaseManager:
     """Manages case data from Excel spreadsheet"""
     
     def __init__(self, filepath=None):
-        self.filepath = filepath or Config.CASES_FILE_PATH
+        if filepath:
+            self.filepath = filepath
+        else:
+            # Construct path relative to ai_assistant directory
+            import os
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            self.filepath = os.path.join(script_dir, Config.CASES_FILE_PATH)
         self.df = self.load_cases()
         
     def load_cases(self):
@@ -112,6 +118,36 @@ class CaseManager:
         except Exception as e:
             logger.error(f"Error checking duplicates: {e}")
 
+    def search_case(self, search_term):
+        """Search for a case by PV, Name, or CMS number"""
+        try:
+            if self.df.empty:
+                return None
+            
+            # Convert search term to string and lower case for comparison
+            search_term = str(search_term).lower()
+            
+            # Search by PV (column 1)
+            pv_matches = self.df[self.df[1].astype(str).str.lower() == search_term]
+            if not pv_matches.empty:
+                return self.format_case(pv_matches.iloc[0])
+            
+            # Search by Name (column 3)
+            name_matches = self.df[self.df[3].astype(str).str.lower().str.contains(search_term, na=False)]
+            if not name_matches.empty:
+                return [self.format_case(row) for _, row in name_matches.iterrows()]
+            
+            # Search by CMS (column 0)
+            cms_matches = self.df[self.df[0].astype(str).str.lower() == search_term]
+            if not cms_matches.empty:
+                return self.format_case(cms_matches.iloc[0])
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error searching for '{search_term}': {e}")
+            return None
+    
     def format_case(self, row):
         """Format case data into dictionary with safe access"""
         try:

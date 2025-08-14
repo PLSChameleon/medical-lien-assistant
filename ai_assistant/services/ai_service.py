@@ -179,7 +179,7 @@ IMPORTANT: Match this writing style:
     
     def summarize_case_emails(self, case, email_messages):
         """
-        Generate a summary of case-related emails
+        Generate a summary of case-related emails with dates and reply status
         
         Args:
             case (dict): Case information
@@ -192,17 +192,75 @@ IMPORTANT: Match this writing style:
             if not email_messages:
                 return "❌ No emails found for this case."
             
-            conversation = "\n".join([
-                f"{m.get('date', 'Unknown date')} - {m.get('from', 'Unknown sender')}:\n{m.get('snippet', 'No snippet')}\n"
-                for m in email_messages
-            ])
+            # Sort emails by date (oldest first) for chronological order
+            from datetime import datetime
+            import email.utils
+            
+            def parse_email_date(date_str):
+                if not date_str:
+                    return datetime.min
+                try:
+                    # Parse RFC 2822 date format
+                    return datetime(*email.utils.parsedate(date_str)[:6])
+                except:
+                    return datetime.min
+            
+            sorted_emails = sorted(email_messages, key=lambda x: parse_email_date(x.get('date')))
+            
+            # Format conversation with dates
+            conversation_parts = []
+            for i, msg in enumerate(sorted_emails):
+                date_obj = parse_email_date(msg.get('date'))
+                date_formatted = date_obj.strftime('%m-%d-%Y') if date_obj != datetime.min else 'Unknown Date'
+                
+                sender = msg.get('from', 'Unknown sender')
+                snippet = msg.get('snippet', 'No snippet')
+                
+                # Determine if this is from us or from them
+                is_from_us = 'dean' in sender.lower() or 'prohealth' in sender.lower()
+                direction = "[SENT]" if is_from_us else "[RECEIVED]"
+                
+                conversation_parts.append(
+                    f"({date_formatted}) {direction} {sender}:\n{snippet}\n"
+                )
+            
+            conversation = "\n".join(conversation_parts)
+            
+            # Analyze reply patterns
+            sent_count = sum(1 for msg in sorted_emails if 'dean' in msg.get('from', '').lower() or 'prohealth' in msg.get('from', '').lower())
+            received_count = len(sorted_emails) - sent_count
+            
+            # Get last email info
+            last_email = sorted_emails[-1] if sorted_emails else None
+            last_was_from_us = False
+            if last_email:
+                last_from = last_email.get('from', '').lower()
+                last_was_from_us = 'dean' in last_from or 'prohealth' in last_from
             
             prompt = f"""
             This is an email conversation about a legal case for patient {case['Name']} 
             (PV: {case.get('PV', 'Unknown')}, DOI: {case.get('DOI', 'Unknown')}).
             
-            Summarize the back-and-forth between the parties in bullet points. 
-            Suggest what Dean Hyland should do next to follow up or close out the case.
+            Email Statistics:
+            - Total emails: {len(sorted_emails)}
+            - Emails sent by us: {sent_count}
+            - Emails received: {received_count}
+            - Last email was {'from us (no response yet)' if last_was_from_us else 'from them (they responded)'}
+            
+            Please provide a detailed summary in this format:
+            
+            **CORRESPONDENCE SUMMARY:**
+            - List each meaningful exchange with dates in MM-DD-YYYY format
+            - Format: (MM-DD-YYYY) Person/Firm reached out regarding...
+            - Note if there was a reply or no response
+            - Highlight any lien reduction requests, settlement discussions, or case status updates
+            
+            **CURRENT STATUS:**
+            - What is the current state of this case based on the emails?
+            - Are we waiting for a response or do we need to follow up?
+            
+            **RECOMMENDED ACTION:**
+            - What should Dean Hyland do next?
             
             Conversation:
             {conversation}
@@ -211,11 +269,12 @@ IMPORTANT: Match this writing style:
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.3
+                temperature=0.3,
+                max_tokens=1000
             )
             
             result = response.choices[0].message.content.strip()
-            logger.info(f"Generated case summary for {case.get('PV', 'Unknown')}")
+            logger.info(f"Generated enhanced case summary for {case.get('PV', 'Unknown')}")
             return result
             
         except Exception as e:

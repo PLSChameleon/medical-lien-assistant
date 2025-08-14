@@ -490,9 +490,13 @@ class CollectionsTracker:
             logger.error(f"Error parsing email date '{date_string}': {e}")
             return None
     
-    def get_comprehensive_stale_cases(self, case_manager):
+    def get_comprehensive_stale_cases(self, case_manager, exclude_acknowledged=True):
         """
         Get comprehensive stale case analysis using cached bootstrap data - FAST!
+        
+        Args:
+            case_manager: CaseManager instance
+            exclude_acknowledged: Whether to filter out acknowledged cases
         """
         # Check if we have cached stale analysis and it's recent (less than 1 hour old)
         if (hasattr(self, '_cached_stale_results') and 
@@ -502,6 +506,10 @@ class CollectionsTracker:
             cache_age = (datetime.now() - self._cache_timestamp).total_seconds()
             if cache_age < 3600:  # 1 hour cache
                 logger.info("Using cached stale case analysis")
+                
+                # Filter acknowledged cases if requested
+                if exclude_acknowledged:
+                    return self._filter_acknowledged_cases(self._cached_stale_results)
                 return self._cached_stale_results
         
         logger.info("Generating fresh stale case analysis from bootstrap data...")
@@ -660,17 +668,19 @@ class CollectionsTracker:
                 logger.info(f"DEBUG Case 295187 categorization: has_bootstrap_data={has_bootstrap_data}, has_activities={has_activities}, has_valid_contact={has_valid_contact}")
             
             if has_valid_contact:
-                # Check for NO RESPONSE cases (any emails sent but no replies)
-                if case_data["activity_count"] > 0 and case_data["response_count"] == 0:
-                    stale_categories["no_response"].append(case_data)
-                # Cases with valid contact dates - categorize by urgency
-                elif days_since_contact >= 90:
+                # Categorize by urgency FIRST, then check for no response
+                if days_since_contact >= 90:
                     stale_categories["critical"].append(case_data)
-                elif days_since_contact >= 60 and case_data["response_count"] == 0:
+                elif days_since_contact >= 60:
+                    # 60-89 days is high priority
                     stale_categories["high_priority"].append(case_data)
                 elif days_since_contact >= 30:
+                    # 30-59 days needs follow-up
                     stale_categories["needs_follow_up"].append(case_data)
-                # If recent contact (under 30 days), don't categorize as stale
+                elif case_data["activity_count"] > 0 and case_data["response_count"] == 0:
+                    # Less than 30 days but no responses
+                    stale_categories["no_response"].append(case_data)
+                # If recent contact (under 30 days) with responses, don't categorize as stale
             elif has_bootstrap_data and has_activities:
                 # This should rarely happen now with activity fallback
                 logger.warning(f"Case {pv} has {has_activities} activities but no valid contact date - investigate data quality")
@@ -688,9 +698,13 @@ class CollectionsTracker:
             self._save_missing_cases_log(missing_cases)
             logger.info(f"Found {len(missing_cases)} cases missing from bootstrap - logged for backfill")
         
-        # Cache the results
+        # Cache the results (before filtering acknowledged)
         self._cached_stale_results = stale_categories
         self._cache_timestamp = datetime.now()
+        
+        # Filter acknowledged cases if requested
+        if exclude_acknowledged:
+            stale_categories = self._filter_acknowledged_cases(stale_categories)
         
         return stale_categories
     
@@ -719,6 +733,36 @@ class CollectionsTracker:
         except Exception as e:
             logger.error(f"Error saving missing cases log: {e}")
     
+    def _filter_acknowledged_cases(self, stale_categories):
+        """Filter out acknowledged cases from stale categories"""
+        try:
+            from services.case_acknowledgment_service import CaseAcknowledgmentService
+            ack_service = CaseAcknowledgmentService()
+            
+            filtered_categories = {}
+            total_filtered = 0
+            
+            for category, cases in stale_categories.items():
+                filtered_cases = []
+                for case in cases:
+                    pv = case.get("pv")
+                    if pv and not ack_service.is_acknowledged(pv):
+                        filtered_cases.append(case)
+                    else:
+                        total_filtered += 1
+                filtered_categories[category] = filtered_cases
+            
+            if total_filtered > 0:
+                logger.info(f"Filtered out {total_filtered} acknowledged cases from stale analysis")
+            
+            return filtered_categories
+        except ImportError:
+            # If acknowledgment service not available, return unfiltered
+            return stale_categories
+        except Exception as e:
+            logger.error(f"Error filtering acknowledged cases: {e}")
+            return stale_categories
+    
     def clear_stale_cache(self):
         """Clear the stale case analysis cache to force fresh analysis"""
         if hasattr(self, '_cached_stale_results'):
@@ -726,6 +770,50 @@ class CollectionsTracker:
         if hasattr(self, '_cache_timestamp'):
             delattr(self, '_cache_timestamp')
         logger.info("Stale case cache cleared")
+    
+    def recalculate_response_counts(self):
+        """Recalculate response counts excluding our own emails and bounces"""
+        logger.info("Recalculating response counts...")
+        
+        for case_pv, case_data in self.data["cases"].items():
+            response_count = 0
+            activities = case_data.get("activities", [])
+            
+            for activity in activities:
+                if activity.get("type") == "email_received":
+                    details = activity.get("details", {})
+                    sender = details.get("sender_email", "").lower()
+                    
+                    # Skip our own emails
+                    if 'dean' in sender or 'prohealth' in sender or 'hyland' in sender:
+                        continue
+                    
+                    # Skip daemon/bounce emails
+                    daemon_indicators = ['mailer-daemon', 'postmaster', 'delivery', 'undeliverable', 
+                                       'bounce', 'failure', 'failed', 'rejected', 'returned mail']
+                    if any(indicator in sender for indicator in daemon_indicators):
+                        continue
+                    
+                    # Skip auto-replies
+                    subject = details.get("subject", "").lower()
+                    auto_reply_indicators = ['out of office', 'auto-reply', 'automatic reply', 
+                                           'away from office', 'on vacation', 'on leave']
+                    if any(indicator in subject for indicator in auto_reply_indicators):
+                        continue
+                    
+                    # This is a legitimate response
+                    response_count += 1
+            
+            # Update the response count
+            case_data["response_count"] = response_count
+        
+        # Save the updated data
+        self._save_tracking_data()
+        
+        # Clear cache to force refresh
+        self.clear_stale_cache()
+        
+        logger.info(f"Response counts recalculated for {len(self.data['cases'])} cases")
     
     def get_stale_cases_by_category(self, case_manager, category, limit=10):
         """
@@ -904,12 +992,40 @@ class CollectionsTracker:
                                     
                                     headers = {h['name'].lower(): h['value'] for h in full_msg.get('payload', {}).get('headers', [])}
                                     date_str = headers.get('date', '')
-                                    from_email = headers.get('from', '')
-                                    subject = headers.get('subject', '')
+                                    from_email = headers.get('from', '').lower()
+                                    subject = headers.get('subject', '').lower()
+                                    
+                                    # Skip if this is from us (Dean/Prohealth)
+                                    if 'dean' in from_email or 'prohealth' in from_email or 'hyland' in from_email:
+                                        continue
+                                    
+                                    # Skip if this is a daemon/bounce email
+                                    daemon_indicators = ['mailer-daemon', 'postmaster', 'delivery', 'undeliverable', 
+                                                       'bounce', 'failure', 'failed', 'rejected', 'returned mail']
+                                    if any(indicator in from_email for indicator in daemon_indicators):
+                                        # Log as bounce/failed delivery instead of response
+                                        self.log_case_activity(
+                                            case_pv=case["PV"],
+                                            activity_type="email_bounced",
+                                            details={
+                                                "sender_email": from_email,
+                                                "subject": subject,
+                                                "received_date": self._parse_email_date(date_str).isoformat() if self._parse_email_date(date_str) else None,
+                                                "gmail_id": msg['id'],
+                                                "source": "bootstrap"
+                                            }
+                                        )
+                                        continue
+                                    
+                                    # Skip auto-replies
+                                    auto_reply_indicators = ['out of office', 'auto-reply', 'automatic reply', 
+                                                           'away from office', 'on vacation', 'on leave']
+                                    if any(indicator in subject for indicator in auto_reply_indicators):
+                                        continue
                                     
                                     email_date = self._parse_email_date(date_str)
                                     
-                                    # Log received email as activity
+                                    # This is a legitimate response - log it
                                     self.log_case_activity(
                                         case_pv=case["PV"],
                                         activity_type="email_received",
