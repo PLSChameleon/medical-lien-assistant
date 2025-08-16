@@ -305,17 +305,16 @@ class BulkEmailService:
                 progress_callback("Initializing categories...", 0)
             
             categories = {
-                "no_recent_contact": [],
-                "missing_doi": [],
-                "old_cases": [],
+                "critical": [],  # 90+ days no response
+                "high_priority": [],  # 60+ days no response
+                "needs_follow_up": [],  # 30+ days no response
+                "no_response": [],  # Sent but no response (under 30 days)
+                "never_contacted": [],  # Never sent any emails
+                "missing_doi": [],  # Cases with missing DOI
                 "ccp_335_1": [],  # Cases needing CCP 335.1 statute inquiry
-                "by_firm": {},
-                "never_contacted": [],
-                "high_value": [],  # Cases with high potential value
-                "ready_to_close": [],  # Cases that might be ready for settlement
-                "high_priority": [],  # Score 70-100
-                "medium_priority": [],  # Score 40-69
-                "low_priority": []  # Score 0-39
+                "by_firm": {},  # Organized by law firm
+                "high_value": [],  # Cases with high balance
+                "ready_to_close": []  # Cases that might be ready for settlement
             }
             
             for idx, row in df.iterrows():
@@ -403,36 +402,8 @@ class BulkEmailService:
                     except Exception as e:
                         logger.debug(f"Error processing DOI for case {pv}: {e}")
                 
-                # Use collections tracker data if available
-                if self.collections_tracker:
-                    try:
-                        activity = self.collections_tracker.get_case_activity(pv)
-                        if activity:
-                            days_since = activity.get("days_since_last_contact")
-                            if days_since and days_since > 60:
-                                categories["no_recent_contact"].append(case_data)
-                            elif not activity.get("last_contact_date"):
-                                categories["never_contacted"].append(case_data)
-                    except:
-                        pass
-                
-                # Calculate priority score for each case
-                priority_score = self.calculate_case_priority(case_data)
-                case_data["priority_score"] = priority_score
-                
-                # Categorize by priority
-                if priority_score >= 70:
-                    categories["high_priority"].append(case_data)
-                elif priority_score >= 40:
-                    categories["medium_priority"].append(case_data)
-                else:
-                    categories["low_priority"].append(case_data)
-            
-            self.categorized_cases = categories
-            
-            # Sort priority categories by score (highest first)
-            for priority_cat in ["high_priority", "medium_priority", "low_priority"]:
-                categories[priority_cat].sort(key=lambda x: x.get("priority_score", 0), reverse=True)
+                # Note: Time-based categories (critical, high_priority, needs_follow_up, no_response)
+                # are handled by the collections tracker and pulled in prepare_batch()
             
             # Cache the results
             self.categorized_cases = categories
@@ -441,14 +412,9 @@ class BulkEmailService:
             # Log category statistics
             elapsed_time = time.time() - start_time
             logger.info(f"Case categorization complete in {elapsed_time:.2f} seconds:")
-            logger.info(f"  🔴 High Priority (70-100): {len(categories['high_priority'])}")
-            logger.info(f"  🟡 Medium Priority (40-69): {len(categories['medium_priority'])}")
-            logger.info(f"  🟢 Low Priority (0-39): {len(categories['low_priority'])}")
             logger.info(f"  ⚖️ CCP 335.1 (>2yr statute): {len(categories['ccp_335_1'])}")
-            logger.info(f"  Missing DOI: {len(categories['missing_doi'])}")
-            logger.info(f"  Old cases: {len(categories['old_cases'])}")
-            logger.info(f"  No recent contact: {len(categories['no_recent_contact'])}")
-            logger.info(f"  Never contacted: {len(categories['never_contacted'])}")
+            logger.info(f"  ❓ Missing DOI: {len(categories['missing_doi'])}")
+            logger.info(f"  💰 High value cases: {len(categories['high_value'])}")
             logger.info(f"  Unique firms: {len(categories['by_firm'])}")
             
             return categories

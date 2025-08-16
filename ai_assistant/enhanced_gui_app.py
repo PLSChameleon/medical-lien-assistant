@@ -124,25 +124,29 @@ class StaleCaseWidget(QWidget):
         # Category tabs
         self.category_tabs = QTabWidget()
         
-        # Critical cases tab
-        self.critical_widget = self.create_category_widget("critical", "🚨 Critical (90+ days)")
+        # Critical cases tab (90+ days no response)
+        self.critical_widget = self.create_category_widget("critical", "🚨 Critical (90+ days no response)")
         self.category_tabs.addTab(self.critical_widget, "Critical")
         
-        # High priority tab
-        self.high_priority_widget = self.create_category_widget("high_priority", "🔥 High Priority (60+ days)")
+        # High priority tab (60+ days no response)
+        self.high_priority_widget = self.create_category_widget("high_priority", "🔥 High Priority (60+ days no response)")
         self.category_tabs.addTab(self.high_priority_widget, "High Priority")
         
-        # Needs follow-up tab
-        self.needs_followup_widget = self.create_category_widget("needs_follow_up", "📋 Needs Follow-up (30+ days)")
+        # Needs follow-up tab (30+ days no response)
+        self.needs_followup_widget = self.create_category_widget("needs_follow_up", "📋 Needs Follow-up (30+ days no response)")
         self.category_tabs.addTab(self.needs_followup_widget, "Needs Follow-up")
         
         # Never contacted tab
         self.never_contacted_widget = self.create_category_widget("never_contacted", "📝 Never Contacted")
         self.category_tabs.addTab(self.never_contacted_widget, "Never Contacted")
         
-        # No response tab
-        self.no_response_widget = self.create_category_widget("no_response", "📧 No Response")
+        # No response tab (under 30 days)
+        self.no_response_widget = self.create_category_widget("no_response", "📧 No Response (<30 days)")
         self.category_tabs.addTab(self.no_response_widget, "No Response")
+        
+        # Missing DOI tab
+        self.missing_doi_widget = self.create_category_widget("missing_doi", "❓ Missing DOI")
+        self.category_tabs.addTab(self.missing_doi_widget, "Missing DOI")
         
         # Summary statistics
         self.stats_label = QLabel()
@@ -361,7 +365,7 @@ class StaleCaseWidget(QWidget):
                     threshold = 0.0
             
             # Apply filter to each category
-            for category in ["critical", "high_priority", "needs_follow_up", "never_contacted", "no_response"]:
+            for category in ["critical", "high_priority", "needs_follow_up", "never_contacted", "no_response", "missing_doi"]:
                 cases = self.category_data.get(category, [])
                 
                 # Add balance information to each case
@@ -888,17 +892,14 @@ class BulkEmailWidget(QWidget):
         
         if self.by_category_radio.isChecked():
             self.selection_combo.addItems([
-                # Original categories
+                # Stale case categories
+                "Critical (90+ days no response)",
+                "High Priority (60+ days no response)",
+                "Needs Follow-up (30+ days no response)",
                 "Never Contacted",
-                "No Recent Contact (>60 days)",
+                "No Response (<30 days)",
                 "Missing DOI",
-                "Old Cases (>2 years)",
-                "CCP 335.1 (>2yr Statute Inquiry)",
-                # Additional stale case categories
-                "Critical (90+ days)",
-                "High Priority (60-89 days)",
-                "Needs Follow-up (30-59 days)",
-                "No Response (sent but no reply)"
+                "CCP 335.1 (>2yr Statute Inquiry)"
             ])
         elif self.by_firm_radio.isChecked():
             # Get firms from categorized cases
@@ -908,9 +909,9 @@ class BulkEmailWidget(QWidget):
             self.selection_combo.addItems(firms)
         elif self.by_priority_radio.isChecked():
             self.selection_combo.addItems([
-                "High Priority (70-100)",
-                "Medium Priority (40-69)",
-                "Low Priority (0-39)"
+                "Critical (90+ days no response)",
+                "High Priority (60+ days no response)",
+                "Needs Follow-up (30+ days no response)"
             ])
         elif self.by_balance_radio.isChecked():
             self.selection_combo.addItems([
@@ -1118,16 +1119,13 @@ class BulkEmailWidget(QWidget):
             
             if self.by_category_radio.isChecked():
                 category_map = {
+                    "Critical (90+ days no response)": "critical",
+                    "High Priority (60+ days no response)": "high_priority",
+                    "Needs Follow-up (30+ days no response)": "needs_follow_up",
                     "Never Contacted": "never_contacted",
-                    "No Recent Contact (>60 days)": "no_recent_contact",
+                    "No Response (<30 days)": "no_response",
                     "Missing DOI": "missing_doi",
-                    "Old Cases (>2 years)": "old_cases",
-                    "CCP 335.1 (>2yr Statute Inquiry)": "ccp_335_1",
-                    # New stale case categories
-                    "Critical (90+ days)": "critical",
-                    "High Priority (60-89 days)": "high_priority",
-                    "Needs Follow-up (30-59 days)": "needs_follow_up",
-                    "No Response (sent but no reply)": "no_response"
+                    "CCP 335.1 (>2yr Statute Inquiry)": "ccp_335_1"
                 }
                 category = category_map.get(self.selection_combo.currentText())
                 return self.bulk_service.prepare_batch(category, limit=limit)
@@ -1137,11 +1135,11 @@ class BulkEmailWidget(QWidget):
                 return self.bulk_service.prepare_batch("by_firm", subcategory=firm, limit=limit)
                 
             elif self.by_priority_radio.isChecked():
-                # Map to the actual category names used in categorize_cases
+                # Map to the actual category names (same as time-based categories)
                 priority_map = {
-                    "High Priority (70-100)": "high_priority",
-                    "Medium Priority (40-69)": "medium_priority",
-                    "Low Priority (0-39)": "low_priority"
+                    "Critical (90+ days no response)": "critical",
+                    "High Priority (60+ days no response)": "high_priority",
+                    "Needs Follow-up (30+ days no response)": "needs_follow_up"
                 }
                 priority = priority_map.get(self.selection_combo.currentText())
                 return self.bulk_service.prepare_batch(priority, limit=limit)

@@ -294,11 +294,12 @@ class EnhancedCollectionsTracker:
     def get_stale_cases(self, days_threshold=30):
         """Get cases that haven't been contacted recently"""
         stale_cases = {
-            "critical": [],        # 90+ days
-            "high_priority": [],   # 60+ days
-            "needs_follow_up": [], # 30+ days
-            "no_response": [],     # Sent emails but no responses
-            "never_contacted": []  # No activity at all
+            "critical": [],        # Sent email, no response for 90+ days
+            "high_priority": [],   # Sent email, no response for 60+ days
+            "needs_follow_up": [], # Sent email, no response for 30+ days
+            "no_response": [],     # Sent emails but no responses (under 30 days)
+            "never_contacted": [], # No activity at all
+            "missing_doi": []      # Cases without DOI
         }
         
         now = datetime.now()
@@ -307,12 +308,13 @@ class EnhancedCollectionsTracker:
             # Skip if case_info is empty (case not in spreadsheet)
             if not case_data.get('case_info') or not case_data['case_info'].get('name'):
                 continue
-            # Calculate days since last contact
-            days_since = None
-            if case_data['last_contact']:
+            
+            # Calculate days since last SENT email (not last contact)
+            days_since_sent = None
+            if case_data['last_sent']:
                 try:
-                    last_contact_date = datetime.fromisoformat(case_data['last_contact'])
-                    days_since = (now - last_contact_date).days
+                    last_sent_date = datetime.fromisoformat(case_data['last_sent'])
+                    days_since_sent = (now - last_sent_date).days
                 except:
                     pass
             
@@ -321,24 +323,37 @@ class EnhancedCollectionsTracker:
                 "name": case_data['case_info']['name'],
                 "law_firm": case_data['case_info']['law_firm'],
                 "attorney_email": case_data['case_info']['attorney_email'],
-                "days_since_contact": days_since,
+                "doi": case_data['case_info'].get('doi', ''),
+                "days_since_sent": days_since_sent,
+                "last_sent": case_data['last_sent'],
                 "last_contact": case_data['last_contact'],
                 "sent_count": case_data['sent_count'],
                 "response_count": case_data['response_count']
             }
             
-            # Categorize
-            if case_data['sent_count'] == 0 and case_data['response_count'] == 0:
+            # Check for missing DOI
+            if not case_data['case_info'].get('doi'):
+                stale_cases['missing_doi'].append(case_summary)
+            
+            # Categorize based on email activity
+            if case_data['sent_count'] == 0:
+                # Never contacted
                 stale_cases['never_contacted'].append(case_summary)
-            elif case_data['sent_count'] > 0 and case_data['response_count'] == 0:
-                stale_cases['no_response'].append(case_summary)
-            elif days_since:
-                if days_since >= 90:
-                    stale_cases['critical'].append(case_summary)
-                elif days_since >= 60:
-                    stale_cases['high_priority'].append(case_summary)
-                elif days_since >= 30:
-                    stale_cases['needs_follow_up'].append(case_summary)
+            elif case_data['response_count'] == 0:
+                # Sent emails but no responses - categorize by time
+                if days_since_sent is not None:
+                    if days_since_sent >= 90:
+                        stale_cases['critical'].append(case_summary)
+                    elif days_since_sent >= 60:
+                        stale_cases['high_priority'].append(case_summary)
+                    elif days_since_sent >= 30:
+                        stale_cases['needs_follow_up'].append(case_summary)
+                    else:
+                        # Sent recently, no response yet (under 30 days)
+                        stale_cases['no_response'].append(case_summary)
+                else:
+                    # No date info, put in no_response
+                    stale_cases['no_response'].append(case_summary)
         
         return stale_cases
     
@@ -432,3 +447,19 @@ class EnhancedCollectionsTracker:
         # Since we don't have a separate cache, just log
         logger.info("Stale cache cleared (will refresh on next analysis)")
         pass
+    
+    def get_stale_cases_by_category(self, case_manager, category, limit=100):
+        """Get specific stale case category for bulk email processing"""
+        stale_categories = self.get_comprehensive_stale_cases(case_manager)
+        
+        if category not in stale_categories:
+            return {"cases": [], "total": 0, "category": category}
+        
+        cases = stale_categories[category]
+        
+        return {
+            "cases": cases[:limit] if limit else cases,
+            "total": len(cases),
+            "category": category,
+            "remaining": max(0, len(cases) - limit) if limit else 0
+        }
