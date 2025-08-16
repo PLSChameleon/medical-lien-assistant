@@ -18,6 +18,8 @@ class CaseAcknowledgmentService:
     def __init__(self):
         self.ack_file = Config.get_file_path("data/acknowledged_cases.json")
         self.acknowledged_cases = self._load_acknowledgments()
+        # Clean up expired acknowledgments on init
+        self._cleanup_expired()
     
     def _load_acknowledgments(self) -> Dict:
         """Load acknowledged cases from file"""
@@ -25,8 +27,6 @@ class CaseAcknowledgmentService:
             try:
                 with open(self.ack_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    # Clean up expired acknowledgments on load
-                    self._cleanup_expired()
                     return data
             except Exception as e:
                 logger.error(f"Error loading acknowledgments: {e}")
@@ -126,12 +126,18 @@ class CaseAcknowledgmentService:
     
     def _cleanup_expired(self):
         """Remove expired acknowledgments"""
+        if not self.acknowledged_cases:
+            return
+            
         expired = []
         for pv, ack_data in self.acknowledged_cases.items():
             if ack_data.get("review_after"):
-                review_date = datetime.fromisoformat(ack_data["review_after"])
-                if datetime.now() > review_date:
-                    expired.append(pv)
+                try:
+                    review_date = datetime.fromisoformat(ack_data["review_after"])
+                    if datetime.now() > review_date:
+                        expired.append(pv)
+                except Exception as e:
+                    logger.error(f"Error parsing review date for {pv}: {e}")
         
         for pv in expired:
             del self.acknowledged_cases[pv]

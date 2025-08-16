@@ -18,6 +18,10 @@ import asyncio
 from services.user_credential_manager import UserCredentialManager
 from services.gmail_multi_user_service import MultiUserGmailService
 from services.cms_multi_user_integration import MultiUserCMSIntegration
+try:
+    from utils.easy_gmail_auth import EasyGmailAuth
+except ImportError:
+    EasyGmailAuth = None
 
 logger = logging.getLogger(__name__)
 
@@ -127,23 +131,52 @@ class GmailSetupPage(QWizardPage):
         self.registerField("gmail_email*", self.email_input)
     
     def start_gmail_auth(self):
-        """Start Gmail OAuth flow"""
+        """Start Gmail OAuth flow with automatic token capture"""
         email = self.email_input.text().strip()
         if not email:
             QMessageBox.warning(self, "Error", "Please enter your Gmail address")
             return
         
         try:
-            # Initialize Gmail service
+            # Try to use easy authentication if available
+            if EasyGmailAuth:
+                auth = EasyGmailAuth()
+                
+                self.status_label.setText("Opening browser for Gmail sign-in...")
+                self.status_label.setStyleSheet("QLabel { color: blue; }")
+                QApplication.processEvents()
+                
+                # Perform authentication (automatically captures token)
+                creds = auth.authenticate()
+                
+                if creds:
+                    # Authentication successful
+                    self.auth_completed = True
+                    self.status_label.setText("✓ Gmail authenticated successfully!")
+                    self.status_label.setStyleSheet("QLabel { color: green; }")
+                    
+                    # Store email in wizard
+                    self.parent_wizard.user_email = email
+                    
+                    # Disable inputs since we're done
+                    self.email_input.setEnabled(False)
+                    self.auth_button.setEnabled(False)
+                    self.auth_code_input.hide()
+                    self.verify_button.hide()
+                    
+                    # Mark page as complete
+                    self.completeChanged.emit()
+                    return
+            
+            # Fall back to manual method if easy auth not available
             self.gmail_service = MultiUserGmailService()
             
-            # Start authentication
             if self.gmail_service.authenticate_new_user(email):
                 # Open browser with auth URL
                 auth_url = self.gmail_service.auth_url
                 webbrowser.open(auth_url)
                 
-                # Enable code input
+                # Enable code input for manual entry
                 self.auth_code_input.setEnabled(True)
                 self.verify_button.setEnabled(True)
                 

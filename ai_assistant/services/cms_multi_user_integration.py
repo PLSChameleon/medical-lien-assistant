@@ -5,12 +5,12 @@ Extends the CMS integration to support multiple users with different credentials
 
 import logging
 import os
-from .cms_integration import CMSIntegration
+from .cms_integration import CMSIntegrationService
 from .user_credential_manager import UserCredentialManager
 
 logger = logging.getLogger(__name__)
 
-class MultiUserCMSIntegration(CMSIntegration):
+class MultiUserCMSIntegration(CMSIntegrationService):
     """CMS Integration with multi-user support"""
     
     def __init__(self, user_email: str = None, use_persistent_session=True):

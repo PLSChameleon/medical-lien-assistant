@@ -49,13 +49,14 @@ class GmailService:
         self.service = build("gmail", "v1", credentials=creds)
         logger.info("Gmail service authenticated successfully")
     
-    def search_messages(self, query, max_results=None):
+    def search_messages(self, query, max_results=None, progress=None):
         """
         Search Gmail messages with a query
         
         Args:
             query (str): Gmail search query
             max_results (int): Maximum number of results to return (None = get ALL)
+            progress: Optional progress manager for UI updates
             
         Returns:
             list: List of message dictionaries with headers and content
@@ -74,7 +75,12 @@ class GmailService:
                 per_request = min(max_results, 100) if max_results > 0 else Config.MAX_EMAIL_RESULTS
             
             # Print initial status for user feedback
-            if fetch_all:
+            if progress:
+                progress.log(f"🔍 Query: {query}")
+                if fetch_all:
+                    progress.log("⏳ Fetching all emails in batches of 100...")
+                progress.process_events()
+            elif fetch_all:
                 print(f"   🔍 Searching Gmail with query: {query}")
                 print("   ⏳ Starting to fetch emails in batches of 100...")
             
@@ -96,6 +102,7 @@ class GmailService:
                     break
                 
                 # Process this batch
+                batch_count = 0
                 for msg in messages:
                     if not fetch_all and len(all_messages) >= max_results:
                         break
@@ -116,6 +123,11 @@ class GmailService:
                         "date": headers.get("Date"),
                         "thread_id": message.get("threadId")
                     })
+                    
+                    batch_count += 1
+                    # Update progress every 10 messages within batch
+                    if progress and batch_count % 10 == 0:
+                        progress.process_events()
                 
                 # Check if we should continue
                 if not fetch_all and len(all_messages) >= max_results:
@@ -129,16 +141,146 @@ class GmailService:
                 # Log progress for large fetches
                 if fetch_all:
                     if len(all_messages) % 100 == 0 and len(all_messages) > 0:
-                        print(f"   📧 Fetched {len(all_messages)} emails so far...")
+                        msg = f"📧 Fetched {len(all_messages)} emails so far..."
+                        if progress:
+                            progress.log(msg)
+                            progress.process_events()
+                        else:
+                            print(f"   {msg}")
                         logger.info(f"Fetched {len(all_messages)} messages so far...")
             
             if len(all_messages) > 0:
-                print(f"   ✅ Total emails found: {len(all_messages)}")
+                msg = f"✅ Total emails found: {len(all_messages)}"
+                if progress:
+                    progress.log(msg)
+                    progress.process_events()
+                else:
+                    print(f"   {msg}")
             logger.info(f"Found {len(all_messages)} messages for query: {query}")
             return all_messages
             
         except Exception as e:
             logger.error(f"Error searching Gmail: {e}")
+            raise Exception(f"Failed to search Gmail: {e}")
+    
+    def search_messages_threaded(self, query, max_results=None, progress_callback=None):
+        """
+        Thread-safe version of search_messages for background execution
+        
+        Args:
+            query (str): Gmail search query
+            max_results (int): Maximum number of results to return (None = get ALL)
+            progress_callback: Callback function(percentage, message, log)
+            
+        Returns:
+            list: List of message dictionaries with headers and content
+        """
+        try:
+            all_messages = []
+            page_token = None
+            
+            # Determine how many to fetch
+            if max_results is None:
+                fetch_all = True
+                per_request = 100
+            else:
+                fetch_all = False
+                per_request = min(max_results, 100) if max_results > 0 else Config.MAX_EMAIL_RESULTS
+            
+            # Initial status
+            if progress_callback:
+                progress_callback(0, f"Searching Gmail: {query}", f"🔍 Query: {query}")
+                if fetch_all:
+                    progress_callback(0, "Starting batch fetch...", "⏳ Fetching emails in batches of 100...")
+            
+            batch_number = 0
+            while True:
+                # Build request parameters
+                params = {
+                    'userId': 'me',
+                    'q': query,
+                    'maxResults': per_request
+                }
+                if page_token:
+                    params['pageToken'] = page_token
+                
+                # Execute request
+                response = self.service.users().messages().list(**params).execute()
+                
+                messages = response.get("messages", [])
+                if not messages:
+                    break
+                
+                batch_number += 1
+                
+                # Process this batch
+                batch_count = 0
+                for msg in messages:
+                    if not fetch_all and len(all_messages) >= max_results:
+                        break
+                    
+                    message = self.service.users().messages().get(
+                        userId='me',
+                        id=msg["id"],
+                        format="full"
+                    ).execute()
+                    
+                    headers = {h["name"]: h["value"] for h in message["payload"]["headers"]}
+                    all_messages.append({
+                        "id": msg["id"],
+                        "snippet": message.get("snippet", ""),
+                        "from": headers.get("From"),
+                        "to": headers.get("To"),
+                        "subject": headers.get("Subject"),
+                        "date": headers.get("Date"),
+                        "thread_id": message.get("threadId")
+                    })
+                    
+                    batch_count += 1
+                    
+                    # Update progress every 10 emails within batch
+                    if progress_callback and batch_count % 10 == 0:
+                        percentage = min(90, int((len(all_messages) / (max_results or 1000)) * 100))
+                        progress_callback(
+                            percentage,
+                            f"Processing email {len(all_messages)}...",
+                            None
+                        )
+                
+                # Log progress for large fetches
+                if fetch_all and len(all_messages) % 100 == 0 and len(all_messages) > 0:
+                    if progress_callback:
+                        progress_callback(
+                            min(90, int((len(all_messages) / 1000) * 100)),
+                            f"Processing batch {batch_number}...",
+                            f"📧 Fetched {len(all_messages)} emails so far..."
+                        )
+                    logger.info(f"Fetched {len(all_messages)} messages so far...")
+                
+                # Check if we should continue
+                if not fetch_all and len(all_messages) >= max_results:
+                    break
+                
+                # Get next page token
+                page_token = response.get('nextPageToken')
+                if not page_token:
+                    break
+            
+            if len(all_messages) > 0:
+                if progress_callback:
+                    progress_callback(
+                        90,
+                        f"Found {len(all_messages)} emails",
+                        f"✅ Total emails found: {len(all_messages)}"
+                    )
+            
+            logger.info(f"Found {len(all_messages)} messages for query: {query}")
+            return all_messages
+            
+        except Exception as e:
+            logger.error(f"Error in threaded Gmail search: {e}")
+            if progress_callback:
+                progress_callback(100, f"Error: {e}", f"❌ Error: {e}")
             raise Exception(f"Failed to search Gmail: {e}")
     
     def get_thread(self, message_id):

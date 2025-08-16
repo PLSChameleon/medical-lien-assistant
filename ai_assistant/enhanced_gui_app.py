@@ -12,9 +12,12 @@ import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
 import pytz
+import shutil
 from PyQt5.QtWidgets import *
+from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
+from PyQt5.QtCore import QTimer, QThread
 
 # Add project root to Python path
 project_root = os.path.dirname(os.path.abspath(__file__))
@@ -23,12 +26,20 @@ sys.path.insert(0, project_root)
 # Import your existing modules
 from config import Config
 from utils.logging_config import setup_logging, log_sent_email
+try:
+    from utils.error_tracker import initialize_error_tracker, get_error_tracker
+    from utils.safe_execution import safe_execute, SafeExecutionContext
+    ERROR_TRACKING_AVAILABLE = True
+except ImportError:
+    ERROR_TRACKING_AVAILABLE = False
 from services.gmail_service import GmailService
 from services.ai_service import AIService
 from services.email_cache_service import EmailCacheService
 from services.collections_tracker import CollectionsTracker
 from services.bulk_email_service import BulkEmailService
 from services.case_acknowledgment_service import CaseAcknowledgmentService
+from utils.progress_manager import ProgressManager, ProgressContext, with_progress
+from utils.threaded_operations import EmailCacheWorker, GmailSearchWorker, CategorizeWorker, CollectionsAnalyzerWorker
 try:
     from services.cms_integration import add_cms_note_for_email, process_session_cms_notes, get_session_stats
     CMS_AVAILABLE = True
@@ -75,6 +86,7 @@ class StaleCaseWidget(QWidget):
         self.case_manager = case_manager
         self.parent_window = parent
         self.ack_service = CaseAcknowledgmentService()
+        self.category_data = {}  # Store original data for filtering
         self.init_ui()
     
     def init_ui(self):
@@ -90,6 +102,24 @@ class StaleCaseWidget(QWidget):
         header_layout.addWidget(self.refresh_btn)
         
         layout.addLayout(header_layout)
+        
+        # Balance filter controls
+        filter_layout = QHBoxLayout()
+        filter_layout.addWidget(QLabel("Balance Filter:"))
+        
+        self.balance_filter_combo = QComboBox()
+        self.balance_filter_combo.addItems(["All", "Above", "Below"])
+        self.balance_filter_combo.currentTextChanged.connect(self.apply_balance_filter)
+        filter_layout.addWidget(self.balance_filter_combo)
+        
+        self.balance_threshold = QLineEdit()
+        self.balance_threshold.setPlaceholderText("Enter amount (e.g., 5000)")
+        self.balance_threshold.setMaximumWidth(150)
+        self.balance_threshold.textChanged.connect(self.apply_balance_filter)
+        filter_layout.addWidget(self.balance_threshold)
+        
+        filter_layout.addStretch()
+        layout.addLayout(filter_layout)
         
         # Category tabs
         self.category_tabs = QTabWidget()
@@ -135,13 +165,14 @@ class StaleCaseWidget(QWidget):
         # Table for cases
         table = QTableWidget()
         table.setObjectName(f"{category}_table")
-        table.setColumnCount(8)
+        table.setColumnCount(9)
         table.setHorizontalHeaderLabels([
-            "PV #", "Name", "Days Since Contact", "Law Firm", 
+            "PV #", "Name", "Balance", "Days Since Contact", "Law Firm", 
             "Attorney Email", "Status", "Acknowledged", "Actions"
         ])
         table.horizontalHeader().setStretchLastSection(False)
         table.setAlternatingRowColors(True)
+        table.setSortingEnabled(True)
         
         # Action buttons
         button_layout = QHBoxLayout()
@@ -165,29 +196,53 @@ class StaleCaseWidget(QWidget):
     def refresh_analysis(self):
         """Refresh the stale case analysis"""
         try:
-            QApplication.setOverrideCursor(Qt.WaitCursor)
+            # Use enhanced progress with live logs
+            with ProgressContext(self.parent_window, "Refreshing Analysis", "Analyzing stale cases...", 
+                               pulse=False, maximum=100, show_logs=True) as progress:
+                
+                # Clear cache to force fresh analysis
+                progress.set_message("Clearing cache...")
+                progress.log("🗑️ Clearing stale case cache")
+                self.collections_tracker.clear_stale_cache()
+                progress.process_events()
+                
+                # Get comprehensive stale cases with enhanced progress
+                progress.log("🔍 Analyzing case activity patterns")
+                
+                def update_progress(msg, pct):
+                    progress.update(pct if pct > 0 else progress.dialog.progress_bar.value(), msg)
+                    if "Found" in msg or "Processing" in msg:
+                        progress.log(msg)
+                    progress.process_events()
+                
+                stale_categories = self.collections_tracker.get_comprehensive_stale_cases(
+                    self.case_manager,
+                    progress_callback=update_progress
+                )
+                
+                # Store data for filtering
+                progress.update(60, "Processing case data...")
+                progress.log("📦 Processing case categories")
+                self.category_data = stale_categories
+                progress.process_events()
+                
+                # Apply current filter and update tables
+                progress.update(80, "Applying filters and updating display...")
+                progress.log("🎯 Applying balance filters")
+                self.apply_balance_filter()
+                progress.process_events()
+                
+                # Update statistics
+                progress.update(95, "Updating statistics...")
+                progress.log("📊 Calculating statistics")
+                self.update_stats()
+                
+                progress.update(100, "Analysis complete!")
+                progress.log("✅ Stale case analysis complete")
             
-            # Clear cache to force fresh analysis
-            self.collections_tracker.clear_stale_cache()
-            
-            # Get comprehensive stale cases
-            stale_categories = self.collections_tracker.get_comprehensive_stale_cases(self.case_manager)
-            
-            # Update each category table
-            self.update_category_table("critical", stale_categories.get("critical", []))
-            self.update_category_table("high_priority", stale_categories.get("high_priority", []))
-            self.update_category_table("needs_follow_up", stale_categories.get("needs_follow_up", []))
-            self.update_category_table("never_contacted", stale_categories.get("never_contacted", []))
-            self.update_category_table("no_response", stale_categories.get("no_response", []))
-            
-            # Update statistics
-            self.update_stats()
-            
-            QApplication.restoreOverrideCursor()
             QMessageBox.information(self, "Success", "Stale case analysis refreshed!")
             
         except Exception as e:
-            QApplication.restoreOverrideCursor()
             QMessageBox.critical(self, "Error", f"Failed to refresh analysis: {str(e)}")
     
     def update_category_table(self, category, cases):
@@ -206,18 +261,29 @@ class StaleCaseWidget(QWidget):
             # Name
             widget.setItem(row, 1, QTableWidgetItem(str(case.get('name', ''))))
             
+            # Balance - format as currency
+            balance = case.get('balance', 0.0)
+            if isinstance(balance, (int, float)):
+                balance_item = QTableWidgetItem(f"${balance:,.2f}")
+                # Store raw value for sorting
+                balance_item.setData(Qt.UserRole, balance)
+            else:
+                balance_item = QTableWidgetItem("$0.00")
+                balance_item.setData(Qt.UserRole, 0.0)
+            widget.setItem(row, 2, balance_item)
+            
             # Days since contact
             days = case.get('days_since_contact', 'Never')
-            widget.setItem(row, 2, QTableWidgetItem(str(days) if days else 'Never'))
+            widget.setItem(row, 3, QTableWidgetItem(str(days) if days else 'Never'))
             
             # Law Firm
-            widget.setItem(row, 3, QTableWidgetItem(str(case.get('law_firm', ''))))
+            widget.setItem(row, 4, QTableWidgetItem(str(case.get('law_firm', ''))))
             
             # Attorney Email
-            widget.setItem(row, 4, QTableWidgetItem(str(case.get('attorney_email', ''))))
+            widget.setItem(row, 5, QTableWidgetItem(str(case.get('attorney_email', ''))))
             
             # Status
-            widget.setItem(row, 5, QTableWidgetItem(str(case.get('status', 'Unknown'))))
+            widget.setItem(row, 6, QTableWidgetItem(str(case.get('status', 'Unknown'))))
             
             # Acknowledgment status
             pv = str(case.get('pv', ''))
@@ -226,9 +292,9 @@ class StaleCaseWidget(QWidget):
                 ack_text = f"✅ {ack_info.get('reason', 'Acknowledged')[:20]}..."
                 ack_item = QTableWidgetItem(ack_text)
                 ack_item.setForeground(QColor(0, 200, 0))
-                widget.setItem(row, 6, ack_item)
+                widget.setItem(row, 7, ack_item)
             else:
-                widget.setItem(row, 6, QTableWidgetItem(""))
+                widget.setItem(row, 7, QTableWidgetItem(""))
             
             # Actions button
             action_btn = QPushButton("Actions")
@@ -259,7 +325,7 @@ class StaleCaseWidget(QWidget):
                                            self.acknowledge_case(p, n, s))
             
             action_btn.setMenu(action_menu)
-            widget.setCellWidget(row, 7, action_btn)
+            widget.setCellWidget(row, 8, action_btn)
         
         widget.resizeColumnsToContents()
     
@@ -280,6 +346,48 @@ class StaleCaseWidget(QWidget):
             
         except Exception as e:
             self.stats_label.setText(f"Error loading statistics: {str(e)}")
+    
+    def apply_balance_filter(self):
+        """Apply balance filter to all category tables"""
+        try:
+            filter_type = self.balance_filter_combo.currentText() if hasattr(self, 'balance_filter_combo') else "All"
+            threshold_text = self.balance_threshold.text() if hasattr(self, 'balance_threshold') else ""
+            
+            threshold = 0.0
+            if threshold_text:
+                try:
+                    threshold = float(threshold_text.replace(',', '').replace('$', ''))
+                except ValueError:
+                    threshold = 0.0
+            
+            # Apply filter to each category
+            for category in ["critical", "high_priority", "needs_follow_up", "never_contacted", "no_response"]:
+                cases = self.category_data.get(category, [])
+                
+                # Add balance information to each case
+                filtered_cases = []
+                for case in cases:
+                    # Get full case data with balance
+                    pv = case.get('pv')
+                    if pv:
+                        full_case = self.case_manager.get_case_by_pv(pv)
+                        if full_case:
+                            case['balance'] = full_case.get('Balance', 0.0)
+                    
+                    # Apply filter
+                    balance = case.get('balance', 0.0)
+                    if filter_type == "All":
+                        filtered_cases.append(case)
+                    elif filter_type == "Above" and balance >= threshold:
+                        filtered_cases.append(case)
+                    elif filter_type == "Below" and balance <= threshold:
+                        filtered_cases.append(case)
+                
+                # Update table with filtered cases
+                self.update_category_table(category, filtered_cases)
+                
+        except Exception as e:
+            print(f"Error applying balance filter: {e}")
     
     def process_category(self, category):
         """Process all cases in a category"""
@@ -595,6 +703,7 @@ class BulkEmailWidget(QWidget):
         self.by_category_radio = QRadioButton("Process by Category")
         self.by_firm_radio = QRadioButton("Process by Firm")
         self.by_priority_radio = QRadioButton("Process by Priority Score")
+        self.by_balance_radio = QRadioButton("Process by Balance")
         self.custom_selection_radio = QRadioButton("Custom Selection")
         
         self.by_category_radio.setChecked(True)
@@ -602,6 +711,7 @@ class BulkEmailWidget(QWidget):
         category_layout.addWidget(self.by_category_radio)
         category_layout.addWidget(self.by_firm_radio)
         category_layout.addWidget(self.by_priority_radio)
+        category_layout.addWidget(self.by_balance_radio)
         category_layout.addWidget(self.custom_selection_radio)
         
         category_group.setLayout(category_layout)
@@ -611,6 +721,24 @@ class BulkEmailWidget(QWidget):
         self.selection_combo = QComboBox()
         self.update_selection_combo()
         layout.addWidget(self.selection_combo)
+        
+        # Balance filter controls for custom range (hidden by default)
+        self.balance_filter_widget = QWidget()
+        balance_filter_layout = QHBoxLayout()
+        balance_filter_layout.addWidget(QLabel("Filter:"))
+        
+        self.bulk_balance_filter = QComboBox()
+        self.bulk_balance_filter.addItems(["Above", "Below"])
+        balance_filter_layout.addWidget(self.bulk_balance_filter)
+        
+        self.bulk_balance_threshold = QLineEdit()
+        self.bulk_balance_threshold.setPlaceholderText("Enter amount (e.g., 5000)")
+        balance_filter_layout.addWidget(self.bulk_balance_threshold)
+        balance_filter_layout.addStretch()
+        
+        self.balance_filter_widget.setLayout(balance_filter_layout)
+        self.balance_filter_widget.hide()
+        layout.addWidget(self.balance_filter_widget)
         
         # Custom PV input (hidden by default)
         self.custom_input = QTextEdit()
@@ -633,17 +761,22 @@ class BulkEmailWidget(QWidget):
         
         # Preview area
         self.preview_table = QTableWidget()
-        self.preview_table.setColumnCount(8)
+        self.preview_table.setColumnCount(9)
         self.preview_table.setHorizontalHeaderLabels([
-            "PV #", "Name", "Law Firm", "Email", "Status", "Acknowledged", "Actions", "Select"
+            "PV #", "Name", "Balance", "Law Firm", "Email", "Status", "Acknowledged", "Actions", "Select"
         ])
+        self.preview_table.setSortingEnabled(True)
         layout.addWidget(QLabel("Preview:"))
         layout.addWidget(self.preview_table)
         
         # Action buttons
         button_layout = QHBoxLayout()
         
-        self.populate_btn = QPushButton("🔄 Populate Batch")
+        self.refresh_categories_btn = QPushButton("🔄 Refresh Categories")
+        self.refresh_categories_btn.clicked.connect(self.refresh_categories)
+        self.refresh_categories_btn.setToolTip("Recalculate case categories (including CCP 335.1)")
+        
+        self.populate_btn = QPushButton("📋 Populate Batch")
         self.populate_btn.clicked.connect(self.populate_batch)
         
         self.preview_btn = QPushButton("📋 Preview Selected")
@@ -657,6 +790,7 @@ class BulkEmailWidget(QWidget):
         self.export_btn = QPushButton("💾 Export to Excel")
         self.export_btn.clicked.connect(self.export_batch)
         
+        button_layout.addWidget(self.refresh_categories_btn)
         button_layout.addWidget(self.populate_btn)
         button_layout.addWidget(self.preview_btn)
         button_layout.addWidget(self.send_btn)
@@ -675,12 +809,78 @@ class BulkEmailWidget(QWidget):
         self.by_category_radio.toggled.connect(self.on_mode_changed)
         self.by_firm_radio.toggled.connect(self.on_mode_changed)
         self.by_priority_radio.toggled.connect(self.on_mode_changed)
+        self.by_balance_radio.toggled.connect(self.on_mode_changed)
         self.custom_selection_radio.toggled.connect(self.on_mode_changed)
     
     def on_mode_changed(self):
         """Handle processing mode change"""
         self.update_selection_combo()
         self.custom_input.setVisible(self.custom_selection_radio.isChecked())
+        
+        # Show balance filter widget only when "Custom Range" is selected
+        show_balance_filter = (self.by_balance_radio.isChecked() and 
+                             self.selection_combo.currentText() == "Custom Range")
+        self.balance_filter_widget.setVisible(show_balance_filter)
+        
+        # Connect combo change to show/hide balance filter
+        if self.by_balance_radio.isChecked():
+            try:
+                self.selection_combo.currentTextChanged.disconnect()
+            except:
+                pass
+            self.selection_combo.currentTextChanged.connect(self.on_balance_selection_changed)
+    
+    def on_balance_selection_changed(self):
+        """Handle balance selection change"""
+        show_balance_filter = self.selection_combo.currentText() == "Custom Range"
+        self.balance_filter_widget.setVisible(show_balance_filter)
+    
+    def refresh_categories(self):
+        """Force refresh of case categories"""
+        try:
+            # Use enhanced progress with live logs
+            with ProgressContext(self, "Refreshing Categories", "Analyzing cases...", 
+                               pulse=False, maximum=100, show_logs=True) as progress:
+                
+                # Clear cache and force recategorization
+                progress.set_message("Clearing cache...")
+                progress.log("🗑️ Clearing category cache")
+                self.bulk_service.force_recategorization()
+                
+                # Run fresh categorization with enhanced progress
+                progress.log("📂 Starting case categorization")
+                self.bulk_service.categorize_cases(
+                    force_refresh=True, 
+                    progress=progress
+                )
+                
+                # Update combo box if in firm mode
+                if self.by_firm_radio.isChecked():
+                    progress.set_message("Updating display...")
+                    self.update_selection_combo()
+                    
+                progress.update(100, "Categories refreshed!")
+            
+            # Show statistics in a message box
+            stats = self.bulk_service.categorized_cases
+            if stats:
+                ccp_count = len(stats.get('ccp_335_1', []))
+                old_count = len(stats.get('old_cases', []))
+                
+                QMessageBox.information(
+                    self, 
+                    "Categories Refreshed",
+                    f"Case categories have been refreshed!\n\n"
+                    f"Old cases (>2 years): {old_count}\n"
+                    f"CCP 335.1 eligible: {ccp_count}\n"
+                    f"\nCache will be used for the next 5 minutes."
+                )
+            
+            self.update_statistics()
+            
+        except Exception as e:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.critical(self, "Error", f"Failed to refresh categories: {str(e)}")
     
     def update_selection_combo(self):
         """Update the selection combo based on mode"""
@@ -693,6 +893,7 @@ class BulkEmailWidget(QWidget):
                 "No Recent Contact (>60 days)",
                 "Missing DOI",
                 "Old Cases (>2 years)",
+                "CCP 335.1 (>2yr Statute Inquiry)",
                 # Additional stale case categories
                 "Critical (90+ days)",
                 "High Priority (60-89 days)",
@@ -701,7 +902,8 @@ class BulkEmailWidget(QWidget):
             ])
         elif self.by_firm_radio.isChecked():
             # Get firms from categorized cases
-            self.bulk_service.categorize_cases()
+            if not self.bulk_service.categorized_cases:
+                self.bulk_service.categorize_cases()
             firms = list(self.bulk_service.categorized_cases.get("by_firm", {}).keys())[:50]
             self.selection_combo.addItems(firms)
         elif self.by_priority_radio.isChecked():
@@ -709,6 +911,16 @@ class BulkEmailWidget(QWidget):
                 "High Priority (70-100)",
                 "Medium Priority (40-69)",
                 "Low Priority (0-39)"
+            ])
+        elif self.by_balance_radio.isChecked():
+            self.selection_combo.addItems([
+                "All Active Cases",
+                "Above $5,000",
+                "Above $10,000",
+                "Above $20,000",
+                "Below $5,000",
+                "Below $2,000",
+                "Custom Range"
             ])
     
     def toggle_test_mode(self, state):
@@ -762,15 +974,26 @@ class BulkEmailWidget(QWidget):
                 # Name
                 self.preview_table.setItem(row, 1, QTableWidgetItem(str(email.get('name', ''))))
                 
+                # Balance - format as currency
+                balance = email.get('case_data', {}).get('Balance', 0.0) if 'case_data' in email else 0.0
+                if not balance:
+                    # Try to get from case manager
+                    case = self.case_manager.get_case_by_pv(pv)
+                    if case:
+                        balance = case.get('Balance', 0.0)
+                balance_item = QTableWidgetItem(f"${balance:,.2f}")
+                balance_item.setData(Qt.UserRole, balance)  # Store raw value for sorting
+                self.preview_table.setItem(row, 2, balance_item)
+                
                 # Law Firm
-                self.preview_table.setItem(row, 2, QTableWidgetItem(str(email.get('law_firm', ''))))
+                self.preview_table.setItem(row, 3, QTableWidgetItem(str(email.get('law_firm', ''))))
                 
                 # Email
-                self.preview_table.setItem(row, 3, QTableWidgetItem(str(email.get('to', ''))))
+                self.preview_table.setItem(row, 4, QTableWidgetItem(str(email.get('to', ''))))
                 
                 # Status
                 status = email.get('case_data', {}).get('status', '') if 'case_data' in email else ''
-                self.preview_table.setItem(row, 4, QTableWidgetItem(str(status)))
+                self.preview_table.setItem(row, 5, QTableWidgetItem(str(status)))
                 
                 # Acknowledgment status
                 ack_info = self.ack_service.get_acknowledgment_info(pv)
@@ -778,13 +1001,30 @@ class BulkEmailWidget(QWidget):
                     ack_text = f"✅ {ack_info.get('reason', 'Acknowledged')[:15]}..."
                     ack_item = QTableWidgetItem(ack_text)
                     ack_item.setForeground(QColor(0, 200, 0))
-                    self.preview_table.setItem(row, 5, ack_item)
+                    self.preview_table.setItem(row, 6, ack_item)
                 else:
-                    self.preview_table.setItem(row, 5, QTableWidgetItem(""))
+                    self.preview_table.setItem(row, 6, QTableWidgetItem(""))
                 
                 # Actions button
                 action_btn = QPushButton("Actions")
                 action_menu = QMenu()
+                
+                # Add summarize, draft follow-up, and draft status request options
+                case_data = email.get('case_data', {})
+                
+                # Summarize option
+                summarize_action = action_menu.addAction("📊 Summarize")
+                summarize_action.triggered.connect(lambda checked, cd=case_data: self.summarize_case_from_bulk(cd))
+                
+                # Draft follow-up option
+                draft_followup_action = action_menu.addAction("📧 Draft Follow-up")
+                draft_followup_action.triggered.connect(lambda checked, cd=case_data: self.draft_followup_from_bulk(cd))
+                
+                # Draft status request option
+                draft_status_action = action_menu.addAction("📋 Draft Status Request")
+                draft_status_action.triggered.connect(lambda checked, cd=case_data: self.draft_status_request_from_bulk(cd))
+                
+                action_menu.addSeparator()
                 
                 if ack_info:
                     unack_action = action_menu.addAction("❌ Remove Acknowledgment")
@@ -795,13 +1035,13 @@ class BulkEmailWidget(QWidget):
                                                self.acknowledge_case(p, n, s))
                 
                 action_btn.setMenu(action_menu)
-                self.preview_table.setCellWidget(row, 6, action_btn)
+                self.preview_table.setCellWidget(row, 7, action_btn)
                 
-                # Checkbox for selection (now in column 7)
+                # Checkbox for selection (now in column 8)
                 checkbox = QCheckBox()
                 # Don't auto-check acknowledged cases
                 checkbox.setChecked(not bool(ack_info))
-                self.preview_table.setCellWidget(row, 7, checkbox)
+                self.preview_table.setCellWidget(row, 8, checkbox)
             
             self.preview_table.resizeColumnsToContents()
             self.preview_btn.setEnabled(True)
@@ -824,7 +1064,7 @@ class BulkEmailWidget(QWidget):
             # Get selected emails from preview table
             selected_emails = []
             for row in range(self.preview_table.rowCount()):
-                checkbox = self.preview_table.cellWidget(row, 7)  # Updated column
+                checkbox = self.preview_table.cellWidget(row, 8)  # Updated column
                 if checkbox and checkbox.isChecked():
                     selected_emails.append(self.current_batch[row])
             
@@ -870,8 +1110,9 @@ class BulkEmailWidget(QWidget):
     def get_selected_batch(self):
         """Get the selected batch of emails"""
         try:
-            # Always categorize cases first to ensure data is fresh
-            self.bulk_service.categorize_cases()
+            # Ensure cases have been categorized at least once
+            if not self.bulk_service.categorized_cases:
+                self.bulk_service.categorize_cases()
             
             limit = self.limit_spin.value() if self.limit_spin.value() > 0 else None
             
@@ -881,6 +1122,7 @@ class BulkEmailWidget(QWidget):
                     "No Recent Contact (>60 days)": "no_recent_contact",
                     "Missing DOI": "missing_doi",
                     "Old Cases (>2 years)": "old_cases",
+                    "CCP 335.1 (>2yr Statute Inquiry)": "ccp_335_1",
                     # New stale case categories
                     "Critical (90+ days)": "critical",
                     "High Priority (60-89 days)": "high_priority",
@@ -903,6 +1145,68 @@ class BulkEmailWidget(QWidget):
                 }
                 priority = priority_map.get(self.selection_combo.currentText())
                 return self.bulk_service.prepare_batch(priority, limit=limit)
+                
+            elif self.by_balance_radio.isChecked():
+                # Get balance selection
+                balance_option = self.selection_combo.currentText()
+                
+                # Get all active cases
+                all_cases = self.bulk_service.get_active_cases()
+                filtered_emails = []
+                
+                # Define thresholds
+                thresholds = {
+                    "Above $5,000": (5000, None),
+                    "Above $10,000": (10000, None),
+                    "Above $20,000": (20000, None),
+                    "Below $5,000": (None, 5000),
+                    "Below $2,000": (None, 2000)
+                }
+                
+                if balance_option == "All Active Cases":
+                    # Return all active cases
+                    for case_info in all_cases[:limit] if limit else all_cases:
+                        email_data = self.bulk_service.generate_email_content(case_info)
+                        if email_data:
+                            filtered_emails.append(email_data)
+                elif balance_option == "Custom Range":
+                    # Use the balance filter inputs from the header
+                    filter_type = self.bulk_balance_filter.currentText()
+                    threshold_text = self.bulk_balance_threshold.text()
+                    
+                    if threshold_text:
+                        try:
+                            threshold = float(threshold_text.replace(',', '').replace('$', ''))
+                            for case_info in all_cases:
+                                balance = case_info.get('Balance', 0.0)
+                                if filter_type == "Above" and balance >= threshold:
+                                    email_data = self.bulk_service.generate_email_content(case_info)
+                                    if email_data:
+                                        filtered_emails.append(email_data)
+                                elif filter_type == "Below" and balance <= threshold:
+                                    email_data = self.bulk_service.generate_email_content(case_info)
+                                    if email_data:
+                                        filtered_emails.append(email_data)
+                                if limit and len(filtered_emails) >= limit:
+                                    break
+                        except ValueError:
+                            pass
+                elif balance_option in thresholds:
+                    min_val, max_val = thresholds[balance_option]
+                    for case_info in all_cases:
+                        balance = case_info.get('Balance', 0.0)
+                        if min_val is not None and balance >= min_val:
+                            email_data = self.bulk_service.generate_email_content(case_info)
+                            if email_data:
+                                filtered_emails.append(email_data)
+                        elif max_val is not None and balance <= max_val:
+                            email_data = self.bulk_service.generate_email_content(case_info)
+                            if email_data:
+                                filtered_emails.append(email_data)
+                        if limit and len(filtered_emails) >= limit:
+                            break
+                
+                return filtered_emails
                 
             elif self.custom_selection_radio.isChecked():
                 # Parse custom PV numbers
@@ -932,7 +1236,7 @@ class BulkEmailWidget(QWidget):
             # Get selected emails from preview
             selected_emails = []
             for row in range(self.preview_table.rowCount()):
-                checkbox = self.preview_table.cellWidget(row, 7)  # Updated column
+                checkbox = self.preview_table.cellWidget(row, 8)  # Updated column
                 if checkbox and checkbox.isChecked():
                     # Use the full email data from current_batch
                     selected_emails.append(self.current_batch[row])
@@ -1034,6 +1338,194 @@ class BulkEmailWidget(QWidget):
             else:
                 QMessageBox.critical(self, "Error", f"Failed to remove acknowledgment")
     
+    def summarize_case_from_bulk(self, case_data):
+        """Summarize a case from the bulk email view"""
+        try:
+            pv = case_data.get('pv', '')
+            name = case_data.get('name', '')
+            
+            if not pv:
+                QMessageBox.warning(self, "No Case", "No case data available for summarization.")
+                return
+            
+            # Directly trigger summarization without switching tabs
+            if self.parent_window:
+                self.parent_window.summarize_case_by_pv(pv)
+                self.parent_window.log_activity(f"Summarizing case {pv} - {name}")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to summarize case: {str(e)}")
+    
+    def draft_followup_from_bulk(self, case_data):
+        """Draft a follow-up email for a case from the bulk email view"""
+        try:
+            pv = case_data.get('pv', '')
+            name = case_data.get('name', '')
+            attorney_email = case_data.get('attorney_email', '')
+            
+            if not pv:
+                QMessageBox.warning(self, "No Case", "No case data available.")
+                return
+            
+            # Generate follow-up email
+            from templates.followup_template import generate_followup_email
+            
+            # Get full case data
+            full_case = self.parent_window.case_manager.get_case_by_pv(pv) if self.parent_window else None
+            if not full_case:
+                full_case = {'PV': pv, 'Name': name, 'Attorney Email': attorney_email}
+            
+            email_data = generate_followup_email(full_case)
+            subject = email_data['subject']
+            body = email_data['body']
+            
+            # Show email draft dialog
+            dialog = QDialog(self)
+            dialog.setWindowTitle(f"Follow-up Email - {name}")
+            dialog.setMinimumSize(600, 500)
+            
+            layout = QVBoxLayout()
+            
+            # Subject field
+            layout.addWidget(QLabel("Subject:"))
+            subject_input = QLineEdit(subject)
+            layout.addWidget(subject_input)
+            
+            # Body field
+            layout.addWidget(QLabel("Body:"))
+            body_text = QTextEdit()
+            body_text.setPlainText(body)
+            layout.addWidget(body_text)
+            
+            # Buttons
+            button_layout = QHBoxLayout()
+            
+            send_btn = QPushButton("Send Email")
+            send_btn.clicked.connect(lambda: self.send_individual_email(
+                attorney_email, subject_input.text(), body_text.toPlainText(), pv, dialog
+            ))
+            button_layout.addWidget(send_btn)
+            
+            copy_btn = QPushButton("Copy to Clipboard")
+            copy_btn.clicked.connect(lambda: self.copy_to_clipboard(
+                subject_input.text(), body_text.toPlainText()
+            ))
+            button_layout.addWidget(copy_btn)
+            
+            cancel_btn = QPushButton("Cancel")
+            cancel_btn.clicked.connect(dialog.reject)
+            button_layout.addWidget(cancel_btn)
+            
+            layout.addLayout(button_layout)
+            dialog.setLayout(layout)
+            dialog.exec_()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to draft follow-up: {str(e)}")
+    
+    def draft_status_request_from_bulk(self, case_data):
+        """Draft a status request email for a case from the bulk email view"""
+        try:
+            pv = case_data.get('pv', '')
+            name = case_data.get('name', '')
+            attorney_email = case_data.get('attorney_email', '')
+            doi = case_data.get('doi', '')
+            
+            if not pv:
+                QMessageBox.warning(self, "No Case", "No case data available.")
+                return
+            
+            # Generate status request email
+            from templates.status_request import generate_status_request_email
+            
+            # Get full case data
+            full_case = self.parent_window.case_manager.get_case_by_pv(pv) if self.parent_window else None
+            if not full_case:
+                full_case = {'PV': pv, 'Name': name, 'DOI': doi, 'Attorney Email': attorney_email}
+            
+            email_data = generate_status_request_email(full_case)
+            subject = email_data['subject']
+            body = email_data['body']
+            
+            # Show email draft dialog
+            dialog = QDialog(self)
+            dialog.setWindowTitle(f"Status Request - {name}")
+            dialog.setMinimumSize(600, 500)
+            
+            layout = QVBoxLayout()
+            
+            # Subject field
+            layout.addWidget(QLabel("Subject:"))
+            subject_input = QLineEdit(subject)
+            layout.addWidget(subject_input)
+            
+            # Body field
+            layout.addWidget(QLabel("Body:"))
+            body_text = QTextEdit()
+            body_text.setPlainText(body)
+            layout.addWidget(body_text)
+            
+            # Buttons
+            button_layout = QHBoxLayout()
+            
+            send_btn = QPushButton("Send Email")
+            send_btn.clicked.connect(lambda: self.send_individual_email(
+                attorney_email, subject_input.text(), body_text.toPlainText(), pv, dialog
+            ))
+            button_layout.addWidget(send_btn)
+            
+            copy_btn = QPushButton("Copy to Clipboard")
+            copy_btn.clicked.connect(lambda: self.copy_to_clipboard(
+                subject_input.text(), body_text.toPlainText()
+            ))
+            button_layout.addWidget(copy_btn)
+            
+            cancel_btn = QPushButton("Cancel")
+            cancel_btn.clicked.connect(dialog.reject)
+            button_layout.addWidget(cancel_btn)
+            
+            layout.addLayout(button_layout)
+            dialog.setLayout(layout)
+            dialog.exec_()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to draft status request: {str(e)}")
+    
+    def send_individual_email(self, to_email, subject, body, pv, dialog):
+        """Send an individual email"""
+        try:
+            if not self.parent_window or not self.parent_window.gmail_service:
+                QMessageBox.warning(self, "No Gmail Service", "Gmail service not available.")
+                return
+            
+            # Send the email
+            self.parent_window.gmail_service.send_email(to_email, subject, body)
+            
+            # Log the sent email
+            log_sent_email(to_email, subject, pv)
+            
+            # Add CMS note if enabled
+            if self.parent_window.cms_integration_enabled:
+                from services.cms_integration import log_session_email
+                log_session_email(pv, to_email, "INDIVIDUAL")
+            
+            QMessageBox.information(self, "Success", f"Email sent to {to_email}")
+            dialog.accept()
+            
+            # Log activity
+            if self.parent_window:
+                self.parent_window.log_activity(f"Sent individual email for {pv} to {to_email}")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to send email: {str(e)}")
+    
+    def copy_to_clipboard(self, subject, body):
+        """Copy email content to clipboard"""
+        clipboard = QApplication.clipboard()
+        full_text = f"Subject: {subject}\n\n{body}"
+        clipboard.setText(full_text)
+        QMessageBox.information(self, "Copied", "Email content copied to clipboard!")
+    
     def update_statistics(self):
         """Update statistics display"""
         try:
@@ -1051,6 +1543,339 @@ class BulkEmailWidget(QWidget):
             
         except Exception as e:
             self.stats_label.setText(f"Error loading statistics: {str(e)}")
+
+
+class AcknowledgedCasesWidget(QWidget):
+    """Widget for viewing and managing acknowledged cases"""
+    
+    def __init__(self, case_manager, parent=None):
+        super().__init__(parent)
+        self.case_manager = case_manager
+        self.parent_window = parent
+        self.ack_service = CaseAcknowledgmentService()
+        self.init_ui()
+        self.load_acknowledged_cases()
+    
+    def init_ui(self):
+        """Initialize the UI"""
+        layout = QVBoxLayout()
+        
+        # Header
+        header = QLabel("Acknowledged Cases")
+        header.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px;")
+        layout.addWidget(header)
+        
+        # Toolbar
+        toolbar_layout = QHBoxLayout()
+        
+        self.refresh_btn = QPushButton("🔄 Refresh")
+        self.refresh_btn.clicked.connect(self.load_acknowledged_cases)
+        toolbar_layout.addWidget(self.refresh_btn)
+        
+        self.filter_input = QLineEdit()
+        self.filter_input.setPlaceholderText("Filter by name, PV#, or reason...")
+        self.filter_input.textChanged.connect(self.filter_cases)
+        toolbar_layout.addWidget(self.filter_input)
+        
+        self.export_btn = QPushButton("📥 Export to CSV")
+        self.export_btn.clicked.connect(self.export_to_csv)
+        toolbar_layout.addWidget(self.export_btn)
+        
+        toolbar_layout.addStretch()
+        
+        # Stats label
+        self.stats_label = QLabel()
+        toolbar_layout.addWidget(self.stats_label)
+        
+        layout.addLayout(toolbar_layout)
+        
+        # Table for acknowledged cases
+        self.table = QTableWidget()
+        self.table.setColumnCount(8)
+        self.table.setHorizontalHeaderLabels([
+            "PV#", "Name", "DOI", "Law Firm", "Status", 
+            "Acknowledged Date", "Reason", "Actions"
+        ])
+        self.table.setSortingEnabled(True)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.table)
+        
+        # Summary text area
+        self.summary_text = QTextEdit()
+        self.summary_text.setReadOnly(True)
+        self.summary_text.setMaximumHeight(150)
+        layout.addWidget(self.summary_text)
+        
+        self.setLayout(layout)
+    
+    def load_acknowledged_cases(self):
+        """Load all acknowledged cases"""
+        try:
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            
+            # Get all acknowledged cases
+            all_ack = self.ack_service.get_all_acknowledged()
+            
+            # Clear table
+            self.table.setRowCount(0)
+            
+            # Populate table with acknowledged cases
+            for pv, info in all_ack.items():
+                # Get case details from case manager
+                case_data = self.get_case_details(pv)
+                if not case_data:
+                    continue
+                
+                row = self.table.rowCount()
+                self.table.insertRow(row)
+                
+                # PV#
+                self.table.setItem(row, 0, QTableWidgetItem(str(pv)))
+                
+                # Name
+                self.table.setItem(row, 1, QTableWidgetItem(case_data.get('Name', '')))
+                
+                # DOI
+                doi = case_data.get('DOI', '')
+                if hasattr(doi, 'strftime'):
+                    doi = doi.strftime("%m/%d/%Y")
+                self.table.setItem(row, 2, QTableWidgetItem(str(doi)))
+                
+                # Law Firm
+                self.table.setItem(row, 3, QTableWidgetItem(case_data.get('Law Firm', '')))
+                
+                # Status
+                self.table.setItem(row, 4, QTableWidgetItem(case_data.get('Status', '')))
+                
+                # Acknowledged Date
+                ack_date = info.get('acknowledged_date', '')
+                self.table.setItem(row, 5, QTableWidgetItem(ack_date))
+                
+                # Reason
+                reason = info.get('reason', '')
+                self.table.setItem(row, 6, QTableWidgetItem(reason))
+                
+                # Actions
+                action_widget = QWidget()
+                action_layout = QHBoxLayout()
+                action_layout.setContentsMargins(2, 2, 2, 2)
+                
+                # View button
+                view_btn = QPushButton("👁️")
+                view_btn.setToolTip("View case details")
+                view_btn.clicked.connect(lambda checked, p=pv: self.view_case(p))
+                action_layout.addWidget(view_btn)
+                
+                # Unacknowledge button
+                unack_btn = QPushButton("❌")
+                unack_btn.setToolTip("Remove acknowledgment")
+                unack_btn.clicked.connect(lambda checked, p=pv: self.unacknowledge_case(p))
+                action_layout.addWidget(unack_btn)
+                
+                # Email button
+                email_btn = QPushButton("📧")
+                email_btn.setToolTip("Draft email")
+                email_btn.clicked.connect(lambda checked, cd=case_data: self.draft_email(cd))
+                action_layout.addWidget(email_btn)
+                
+                action_widget.setLayout(action_layout)
+                self.table.setCellWidget(row, 7, action_widget)
+            
+            self.table.resizeColumnsToContents()
+            
+            # Update stats
+            total = len(all_ack)
+            self.stats_label.setText(f"Total: {total} cases")
+            
+            # Update summary
+            summary = self.generate_summary(all_ack)
+            self.summary_text.setPlainText(summary)
+            
+            QApplication.restoreOverrideCursor()
+            
+        except Exception as e:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.critical(self, "Error", f"Failed to load acknowledged cases: {str(e)}")
+    
+    def get_case_details(self, pv):
+        """Get case details from case manager"""
+        try:
+            df = self.case_manager.df
+            case_row = df[df[1].astype(str) == str(pv)]
+            if not case_row.empty:
+                return self.case_manager.format_case(case_row.iloc[0])
+        except:
+            pass
+        return None
+    
+    def filter_cases(self):
+        """Filter displayed cases based on search text"""
+        search_text = self.filter_input.text().lower()
+        
+        for row in range(self.table.rowCount()):
+            should_show = False
+            
+            if not search_text:
+                should_show = True
+            else:
+                # Check all columns for match
+                for col in range(self.table.columnCount() - 1):  # Skip actions column
+                    item = self.table.item(row, col)
+                    if item and search_text in item.text().lower():
+                        should_show = True
+                        break
+            
+            self.table.setRowHidden(row, not should_show)
+    
+    def view_case(self, pv):
+        """View case details in main tab"""
+        if self.parent_window:
+            # Switch to Cases tab (index 1)
+            self.parent_window.tabs.setCurrentIndex(1)
+            
+            # Load case
+            self.parent_window.case_search_input.setText(str(pv))
+            self.parent_window.search_cases()
+    
+    def unacknowledge_case(self, pv):
+        """Remove acknowledgment from a case"""
+        reply = QMessageBox.question(
+            self, "Remove Acknowledgment",
+            f"Remove acknowledgment for case {pv}?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            if self.ack_service.unacknowledge_case(pv):
+                QMessageBox.information(self, "Success", f"Acknowledgment removed for case {pv}")
+                self.load_acknowledged_cases()
+            else:
+                QMessageBox.critical(self, "Error", "Failed to remove acknowledgment")
+    
+    def draft_email(self, case_data):
+        """Draft an email for an acknowledged case"""
+        try:
+            # Generate email content
+            from templates.followup_template import get_followup_email
+            subject, body = get_followup_email(case_data)
+            
+            # Show email dialog
+            dialog = QDialog(self)
+            dialog.setWindowTitle(f"Draft Email - {case_data.get('Name', '')}")
+            dialog.setMinimumSize(600, 500)
+            
+            layout = QVBoxLayout()
+            
+            layout.addWidget(QLabel("Subject:"))
+            subject_input = QLineEdit(subject)
+            layout.addWidget(subject_input)
+            
+            layout.addWidget(QLabel("Body:"))
+            body_text = QTextEdit()
+            body_text.setPlainText(body)
+            layout.addWidget(body_text)
+            
+            button_layout = QHBoxLayout()
+            
+            send_btn = QPushButton("Send")
+            send_btn.clicked.connect(lambda: self.send_email(
+                case_data.get('Attorney Email', ''),
+                subject_input.text(),
+                body_text.toPlainText(),
+                case_data.get('PV', ''),
+                dialog
+            ))
+            button_layout.addWidget(send_btn)
+            
+            copy_btn = QPushButton("Copy")
+            copy_btn.clicked.connect(lambda: self.copy_to_clipboard(
+                subject_input.text(), body_text.toPlainText()
+            ))
+            button_layout.addWidget(copy_btn)
+            
+            cancel_btn = QPushButton("Cancel")
+            cancel_btn.clicked.connect(dialog.reject)
+            button_layout.addWidget(cancel_btn)
+            
+            layout.addLayout(button_layout)
+            dialog.setLayout(layout)
+            dialog.exec_()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to draft email: {str(e)}")
+    
+    def send_email(self, to_email, subject, body, pv, dialog):
+        """Send email"""
+        try:
+            if self.parent_window and self.parent_window.gmail_service:
+                self.parent_window.gmail_service.send_email(to_email, subject, body)
+                log_sent_email(to_email, subject, pv)
+                QMessageBox.information(self, "Success", f"Email sent to {to_email}")
+                dialog.accept()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to send email: {str(e)}")
+    
+    def copy_to_clipboard(self, subject, body):
+        """Copy email to clipboard"""
+        clipboard = QApplication.clipboard()
+        clipboard.setText(f"Subject: {subject}\n\n{body}")
+        QMessageBox.information(self, "Copied", "Email copied to clipboard!")
+    
+    def export_to_csv(self):
+        """Export acknowledged cases to CSV"""
+        try:
+            import csv
+            from datetime import datetime
+            
+            filename = f"acknowledged_cases_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            filepath, _ = QFileDialog.getSaveFileName(
+                self, "Save CSV", filename, "CSV Files (*.csv)"
+            )
+            
+            if filepath:
+                with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
+                    writer = csv.writer(csvfile)
+                    
+                    # Write headers
+                    headers = []
+                    for col in range(self.table.columnCount() - 1):  # Skip actions column
+                        headers.append(self.table.horizontalHeaderItem(col).text())
+                    writer.writerow(headers)
+                    
+                    # Write data
+                    for row in range(self.table.rowCount()):
+                        row_data = []
+                        for col in range(self.table.columnCount() - 1):
+                            item = self.table.item(row, col)
+                            row_data.append(item.text() if item else '')
+                        writer.writerow(row_data)
+                
+                QMessageBox.information(self, "Success", f"Data exported to {filepath}")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to export: {str(e)}")
+    
+    def generate_summary(self, all_ack):
+        """Generate summary of acknowledged cases"""
+        try:
+            total = len(all_ack)
+            
+            # Count by reason
+            reasons = {}
+            for info in all_ack.values():
+                reason = info.get('reason', 'Unknown')
+                reasons[reason] = reasons.get(reason, 0) + 1
+            
+            # Build summary
+            summary = f"Total Acknowledged Cases: {total}\n\n"
+            summary += "Breakdown by Reason:\n"
+            for reason, count in sorted(reasons.items(), key=lambda x: x[1], reverse=True):
+                summary += f"  • {reason}: {count} cases\n"
+            
+            return summary
+            
+        except Exception as e:
+            return f"Error generating summary: {str(e)}"
 
 
 class EnhancedMainWindow(QMainWindow):
@@ -1074,8 +1899,14 @@ class EnhancedMainWindow(QMainWindow):
             self.ai_service = AIService()
             
             # Try to initialize Gmail service
+            user_email = "unknown"
             try:
                 self.gmail_service = GmailService()
+                # Get user email for error tracking
+                try:
+                    user_email = self.gmail_service.service.users().getProfile(userId='me').execute().get('emailAddress', 'unknown')
+                except:
+                    pass
             except Exception as gmail_error:
                 self.gmail_service = None
                 QMessageBox.warning(None, "Gmail Service", 
@@ -1083,8 +1914,23 @@ class EnhancedMainWindow(QMainWindow):
                                   "Run 'python ai_assistant\\gmail_auth_refresh.py' to authenticate.\n"
                                   "Email features will be disabled.")
             
+            # Initialize error tracking if available
+            if ERROR_TRACKING_AVAILABLE:
+                self.error_tracker = initialize_error_tracker(user_email)
+                self.log_activity(f"Error tracking initialized for: {user_email}")
+            else:
+                self.error_tracker = None
+            
+            # Initialize case manager with user-specific spreadsheet if available
+            self.user_spreadsheet_path = self.load_user_spreadsheet_path()
+            if self.user_spreadsheet_path and os.path.exists(self.user_spreadsheet_path):
+                self.case_manager = CaseManager(self.user_spreadsheet_path)
+                self.log_activity(f"Loaded user spreadsheet: {os.path.basename(self.user_spreadsheet_path)}")
+            else:
+                self.case_manager = CaseManager()
+                self.log_activity("Using default spreadsheet")
+            
             # Initialize other services
-            self.case_manager = CaseManager()
             self.email_cache_service = EmailCacheService(self.gmail_service) if self.gmail_service else None
             self.collections_tracker = CollectionsTracker()
             
@@ -1102,7 +1948,8 @@ class EnhancedMainWindow(QMainWindow):
                     self.gmail_service, 
                     self.case_manager, 
                     self.ai_service, 
-                    self.collections_tracker
+                    self.collections_tracker,
+                    self.email_cache_service
                 )
             else:
                 self.bulk_email_service = None
@@ -1151,9 +1998,14 @@ class EnhancedMainWindow(QMainWindow):
         self.email_tab = self.create_email_analysis_tab()
         self.tabs.addTab(self.email_tab, "📧 Email Analysis")
         
-        # Stale Cases tab
-        self.stale_cases_tab = StaleCaseWidget(self.collections_tracker, self.case_manager, self)
+        # Stale Cases tab - use enhanced tracker if available, otherwise standard
+        tracker_to_use = self.enhanced_tracker if self.enhanced_tracker else self.collections_tracker
+        self.stale_cases_tab = StaleCaseWidget(tracker_to_use, self.case_manager, self)
         self.tabs.addTab(self.stale_cases_tab, "⏰ Stale Cases")
+        
+        # Acknowledged Cases tab
+        self.acknowledged_cases_tab = AcknowledgedCasesWidget(self.case_manager, self)
+        self.tabs.addTab(self.acknowledged_cases_tab, "✅ Acknowledged")
         
         # Bulk Email tab
         if self.bulk_email_service:
@@ -1199,6 +2051,20 @@ class EnhancedMainWindow(QMainWindow):
         exit_action.triggered.connect(self.close)
         
         file_menu.addAction(open_action)
+        file_menu.addSeparator()
+        
+        # Spreadsheet management actions
+        upload_spreadsheet_action = QAction("📊 &Upload Spreadsheet", self)
+        upload_spreadsheet_action.setShortcut("Ctrl+U")
+        upload_spreadsheet_action.triggered.connect(self.upload_spreadsheet)
+        
+        current_spreadsheet_action = QAction("📋 &Current Spreadsheet", self)
+        current_spreadsheet_action.triggered.connect(self.show_current_spreadsheet)
+        
+        file_menu.addAction(upload_spreadsheet_action)
+        file_menu.addAction(current_spreadsheet_action)
+        file_menu.addSeparator()
+        
         file_menu.addAction(export_action)
         file_menu.addSeparator()
         file_menu.addAction(exit_action)
@@ -1675,6 +2541,126 @@ class EnhancedMainWindow(QMainWindow):
         self.apply_theme()
         self.dark_mode_action.setChecked(self.dark_mode)
         self.dark_mode_btn.setChecked(self.dark_mode)
+    
+    def show_log_viewer(self):
+        """Show the log viewer dialog"""
+        try:
+            dialog = QDialog(self)
+            dialog.setWindowTitle("System Logs and Error Reports")
+            dialog.setMinimumSize(800, 600)
+            
+            layout = QVBoxLayout()
+            
+            # Tab widget for different log types
+            tabs = QTabWidget()
+            
+            # Activity Log Tab
+            activity_tab = QWidget()
+            activity_layout = QVBoxLayout()
+            
+            activity_text = QTextEdit()
+            activity_text.setReadOnly(True)
+            activity_text.setPlainText(self.activity_log.toPlainText())
+            activity_layout.addWidget(activity_text)
+            
+            activity_tab.setLayout(activity_layout)
+            tabs.addTab(activity_tab, "Activity Log")
+            
+            # Error Log Tab
+            if ERROR_TRACKING_AVAILABLE and self.error_tracker:
+                error_tab = QWidget()
+                error_layout = QVBoxLayout()
+                
+                error_text = QTextEdit()
+                error_text.setReadOnly(True)
+                
+                # Get error summary
+                summary = self.error_tracker.get_error_summary()
+                report = self.error_tracker.create_error_report(include_system=False)
+                
+                error_text.setPlainText(f"""Error Summary:
+--------------
+Total Errors Today: {summary['total_errors_today']}
+Session Errors: {summary['total_errors_session']}
+
+Detailed Report:
+----------------
+{report}""")
+                
+                error_layout.addWidget(error_text)
+                
+                # Export button
+                export_btn = QPushButton("Export Full Error Report")
+                export_btn.clicked.connect(lambda: self.export_error_report(from_dialog=True))
+                error_layout.addWidget(export_btn)
+                
+                error_tab.setLayout(error_layout)
+                tabs.addTab(error_tab, f"Error Log ({summary['total_errors_today']})")
+            
+            # System Info Tab
+            info_tab = QWidget()
+            info_layout = QVBoxLayout()
+            
+            info_text = QTextEdit()
+            info_text.setReadOnly(True)
+            
+            system_info = "System Information:\\n-------------------\\n"
+            if ERROR_TRACKING_AVAILABLE and self.error_tracker:
+                for key, value in self.error_tracker.system_info.items():
+                    if key != "python_version":
+                        system_info += f"{key}: {value}\\n"
+            
+            info_text.setPlainText(system_info)
+            info_layout.addWidget(info_text)
+            
+            info_tab.setLayout(info_layout)
+            tabs.addTab(info_tab, "System Info")
+            
+            layout.addWidget(tabs)
+            
+            # Close button
+            close_btn = QPushButton("Close")
+            close_btn.clicked.connect(dialog.close)
+            layout.addWidget(close_btn)
+            
+            dialog.setLayout(layout)
+            dialog.exec_()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to show log viewer: {str(e)}")
+    
+    def export_error_report(self, from_dialog: bool = False):
+        """Export error report for support"""
+        try:
+            if not ERROR_TRACKING_AVAILABLE or not self.error_tracker:
+                QMessageBox.warning(self, "Not Available", 
+                                   "Error tracking is not available.")
+                return
+            
+            # Generate report
+            report_file = self.error_tracker.export_for_support()
+            
+            # Ask user where to save
+            save_path, _ = QFileDialog.getSaveFileName(
+                self, "Save Error Report",
+                f"error_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                "Text Files (*.txt)"
+            )
+            
+            if save_path:
+                import shutil
+                shutil.copy2(report_file, save_path)
+                
+                QMessageBox.information(
+                    self, "Report Exported",
+                    f"Error report saved to:\\n{save_path}\\n\\n"
+                    "You can share this file with support for debugging."
+                )
+                
+                self.log_activity(f"Error report exported to: {save_path}")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to export error report: {str(e)}")
     
     def apply_theme(self):
         """Apply the current theme"""
@@ -2268,13 +3254,11 @@ Case Aging:
                 QMessageBox.warning(self, "Not Found", f"Case PV {pv} not found.")
                 return
             
-            QApplication.setOverrideCursor(Qt.WaitCursor)
-            
-            # Generate status request
-            email_body = self.ai_service.generate_status_request_email(case)
-            subject = f"{case['Name'].upper()} DOI {case['DOI']} // Prohealth Advanced Imaging"
-            
-            QApplication.restoreOverrideCursor()
+            with ProgressContext(self, "Generating Email", "Creating status request email...", pulse=True) as progress:
+                # Generate status request
+                progress.set_message("Generating email content...")
+                email_body = self.ai_service.generate_status_request_email(case)
+                subject = f"{case['Name'].upper()} DOI {case['DOI']} // Prohealth Advanced Imaging"
             
             # Show draft dialog
             dialog = EmailDraftDialog(case, email_body, subject=subject, parent=self)
@@ -2331,21 +3315,188 @@ Case Aging:
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load cases: {str(e)}")
     
+    def load_user_spreadsheet_path(self):
+        """Load the user's saved spreadsheet path"""
+        try:
+            # Get current user email from Gmail service
+            user_email = self.gmail_service.service.users().getProfile(userId='me').execute().get('emailAddress', 'default') if self.gmail_service else 'default'
+            
+            # Create user settings file path
+            user_settings_dir = os.path.join('data', 'user_settings')
+            os.makedirs(user_settings_dir, exist_ok=True)
+            
+            user_file = os.path.join(user_settings_dir, f"{user_email}_spreadsheet.json")
+            
+            if os.path.exists(user_file):
+                with open(user_file, 'r') as f:
+                    data = json.load(f)
+                    return data.get('spreadsheet_path')
+        except Exception as e:
+            print(f"Error loading user spreadsheet path: {e}")
+        return None
+    
+    def save_user_spreadsheet_path(self, path):
+        """Save the user's spreadsheet path"""
+        try:
+            # Get current user email
+            user_email = self.gmail_service.service.users().getProfile(userId='me').execute().get('emailAddress', 'default') if self.gmail_service else 'default'
+            
+            # Create user settings file
+            user_settings_dir = os.path.join('data', 'user_settings')
+            os.makedirs(user_settings_dir, exist_ok=True)
+            
+            user_file = os.path.join(user_settings_dir, f"{user_email}_spreadsheet.json")
+            
+            with open(user_file, 'w') as f:
+                json.dump({
+                    'spreadsheet_path': path,
+                    'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                }, f, indent=2)
+                
+            return True
+        except Exception as e:
+            print(f"Error saving user spreadsheet path: {e}")
+            return False
+    
+    def upload_spreadsheet(self):
+        """Upload a new spreadsheet for the current user"""
+        try:
+            filepath, _ = QFileDialog.getOpenFileName(
+                self, "Upload Your Spreadsheet", "", 
+                "Excel Files (*.xlsx *.xls);;All Files (*.*)")
+            
+            if filepath:
+                with ProgressContext(self, "Uploading Spreadsheet", "Processing spreadsheet...", pulse=True) as progress:
+                    # Copy the file to a user-specific location
+                    progress.set_message("Getting user profile...")
+                    user_email = self.gmail_service.service.users().getProfile(userId='me').execute().get('emailAddress', 'default') if self.gmail_service else 'default'
+                    user_dir = os.path.join('data', 'user_spreadsheets')
+                    os.makedirs(user_dir, exist_ok=True)
+                    
+                    # Create unique filename
+                    progress.set_message("Copying spreadsheet...")
+                    filename = f"{user_email}_{os.path.basename(filepath)}"
+                    dest_path = os.path.join(user_dir, filename)
+                    
+                    # Copy the file
+                    shutil.copy2(filepath, dest_path)
+                    
+                    # Save the path
+                    progress.set_message("Saving settings...")
+                    self.save_user_spreadsheet_path(dest_path)
+                    
+                    # Reload case manager with new spreadsheet
+                    progress.set_message("Loading case data...")
+                    self.case_manager = CaseManager(dest_path)
+                self.user_spreadsheet_path = dest_path
+                
+                # Reload all dependent services
+                if hasattr(self, 'bulk_service'):
+                    self.bulk_service.case_manager = self.case_manager
+                    # Clear the categorization cache to force re-analysis
+                    self.bulk_service.categorized_cases = {}
+                    self.bulk_service.categorization_timestamp = None
+                    self.bulk_service.force_recategorization()
+                    logger.info("Cleared bulk service cache after spreadsheet upload")
+                    
+                if hasattr(self, 'bulk_email_tab'):
+                    self.bulk_email_tab.case_manager = self.case_manager
+                    # Trigger refresh of categories
+                    if hasattr(self.bulk_email_tab, 'refresh_categories'):
+                        QTimer.singleShot(100, self.bulk_email_tab.refresh_categories)
+                    
+                if hasattr(self, 'stale_widget'):
+                    self.stale_widget.case_manager = self.case_manager
+                    # Trigger refresh of stale cases
+                    if hasattr(self.stale_widget, 'refresh_analysis'):
+                        QTimer.singleShot(100, self.stale_widget.refresh_analysis)
+                
+                # Update collections tracker with new case data
+                if hasattr(self, 'collections_tracker'):
+                    # Re-analyze with new spreadsheet data
+                    logger.info("Re-analyzing collections with new spreadsheet")
+                    QTimer.singleShot(200, lambda: self.collections_tracker.track_all_emails())
+                    
+                # Refresh displays
+                self.load_all_cases()
+                
+                QMessageBox.information(
+                    self, "Success", 
+                    f"Spreadsheet uploaded successfully!\n\n"
+                    f"Loaded {len(self.case_manager.df)} cases from:\n{os.path.basename(filepath)}\n\n"
+                    f"This spreadsheet will be used for all your sessions."
+                )
+                
+                self.log_activity(f"Uploaded new spreadsheet: {os.path.basename(filepath)}")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to upload spreadsheet: {str(e)}")
+    
+    def show_current_spreadsheet(self):
+        """Show information about the current spreadsheet"""
+        try:
+            if self.user_spreadsheet_path:
+                file_info = os.stat(self.user_spreadsheet_path)
+                modified_time = datetime.fromtimestamp(file_info.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+                
+                info_text = f"""
+                <h3>Current Spreadsheet Information</h3>
+                <p><b>File:</b> {os.path.basename(self.user_spreadsheet_path)}</p>
+                <p><b>Total Cases:</b> {len(self.case_manager.df)}</p>
+                <p><b>Active Cases:</b> {len(self.case_manager.df[self.case_manager.df[2].str.lower() == 'active'])}</p>
+                <p><b>Last Modified:</b> {modified_time}</p>
+                <p><b>Full Path:</b> {self.user_spreadsheet_path}</p>
+                """
+            else:
+                info_text = """
+                <h3>Using Default Spreadsheet</h3>
+                <p>You are currently using the default system spreadsheet.</p>
+                <p>Use <b>File → Upload Spreadsheet</b> to upload your own collector list.</p>
+                """
+            
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Current Spreadsheet")
+            msg.setTextFormat(Qt.RichText)
+            msg.setText(info_text)
+            msg.exec_()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to get spreadsheet info: {str(e)}")
+    
     def refresh_email_cache(self):
-        """Refresh email cache"""
+        """Refresh email cache using background thread"""
         if not self.email_cache_service:
             QMessageBox.warning(self, "Service Unavailable", "Email cache service not available.")
             return
         
         try:
-            QApplication.setOverrideCursor(Qt.WaitCursor)
-            self.email_cache_service.download_sent_emails(500)
-            QApplication.restoreOverrideCursor()
-            QMessageBox.information(self, "Success", "Email cache refreshed!")
-            self.log_activity("Refreshed email cache")
+            # Create progress dialog
+            progress = ProgressManager(self)
+            progress.show_progress("Refreshing Email Cache", "Downloading recent emails...", 
+                                 maximum=100, show_logs=True)
+            progress.log("🔄 Starting email cache refresh")
+            
+            # Create and start worker thread
+            self.email_worker = EmailCacheWorker(self.email_cache_service, 'refresh', 500)
+            
+            # Connect signals
+            self.email_worker.progress_update.connect(
+                lambda pct, msg: progress.update(pct, msg)
+            )
+            self.email_worker.log_message.connect(progress.log)
+            self.email_worker.finished.connect(
+                lambda result: self._on_email_refresh_complete(result, progress)
+            )
+            self.email_worker.error.connect(
+                lambda err: self._on_email_operation_error(err, progress)
+            )
+            
+            # Start the worker
+            self.email_worker.start()
+            
         except Exception as e:
             QApplication.restoreOverrideCursor()
-            QMessageBox.critical(self, "Error", f"Failed to refresh cache: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to start refresh: {str(e)}")
     
     def bootstrap_emails(self):
         """Bootstrap all emails"""
@@ -2361,14 +3512,60 @@ Case Aging:
         
         if reply == QMessageBox.Yes:
             try:
-                QApplication.setOverrideCursor(Qt.WaitCursor)
-                emails = self.email_cache_service.bootstrap_all_emails()
-                QApplication.restoreOverrideCursor()
-                QMessageBox.information(self, "Success", f"Downloaded {len(emails)} emails!")
-                self.log_activity(f"Bootstrapped {len(emails)} emails")
+                # Create progress dialog
+                progress = ProgressManager(self)
+                progress.show_progress("Downloading Email History", 
+                                     "Downloading all emails (this may take 10-30 minutes)...", 
+                                     maximum=100, show_logs=True)
+                progress.log("🚀 Starting full email bootstrap")
+                
+                # Create and start worker thread
+                self.email_worker = EmailCacheWorker(self.email_cache_service, 'bootstrap')
+                
+                # Connect signals
+                self.email_worker.progress_update.connect(
+                    lambda pct, msg: progress.update(pct, msg)
+                )
+                self.email_worker.log_message.connect(progress.log)
+                self.email_worker.finished.connect(
+                    lambda result: self._on_bootstrap_complete(result, progress)
+                )
+                self.email_worker.error.connect(
+                    lambda err: self._on_email_operation_error(err, progress)
+                )
+                
+                # Start the worker
+                self.email_worker.start()
+                
             except Exception as e:
                 QApplication.restoreOverrideCursor()
                 QMessageBox.critical(self, "Error", f"Bootstrap failed: {str(e)}")
+    
+    def _on_email_refresh_complete(self, result, progress):
+        """Handle email refresh completion"""
+        progress.update(100, "Email cache updated successfully!")
+        progress.log("✅ Refresh complete")
+        QTimer.singleShot(500, progress.close)  # Close after short delay
+        QMessageBox.information(self, "Success", "Email cache refreshed!")
+        self.log_activity("Refreshed email cache")
+    
+    def _on_bootstrap_complete(self, emails, progress):
+        """Handle bootstrap completion"""
+        if emails:
+            progress.update(100, f"Downloaded {len(emails)} emails!")
+            progress.log(f"✅ Bootstrap complete - {len(emails)} emails")
+            QTimer.singleShot(500, progress.close)
+            QMessageBox.information(self, "Success", f"Downloaded {len(emails)} emails!")
+            self.log_activity(f"Bootstrapped {len(emails)} emails")
+        else:
+            progress.close()
+            QMessageBox.warning(self, "No Emails", "No emails were found.")
+    
+    def _on_email_operation_error(self, error, progress):
+        """Handle email operation errors"""
+        progress.log(f"❌ Error: {error}")
+        progress.close()
+        QMessageBox.critical(self, "Error", f"Operation failed: {error}")
     
     def bootstrap_collections(self):
         """Bootstrap collections tracker"""
@@ -2380,36 +3577,85 @@ Case Aging:
         
         if reply == QMessageBox.Yes:
             try:
-                QApplication.setOverrideCursor(Qt.WaitCursor)
-                
+                # Use enhanced tracker if available
                 if self.enhanced_tracker:
-                    success = self.enhanced_tracker.analyze_from_cache(self.case_manager)
-                    if success:
-                        QApplication.restoreOverrideCursor()
-                        QMessageBox.information(self, "Success", "Collections analysis complete!")
-                        self.log_activity("Bootstrapped collections from cache")
-                        return
-                
-                # Fallback to standard bootstrap
-                results = self.collections_tracker.bootstrap_from_gmail_direct(
-                    self.gmail_service,
-                    self.case_manager
-                )
-                
-                QApplication.restoreOverrideCursor()
-                
-                if results:
-                    QMessageBox.information(
-                        self, "Success",
-                        f"Processed {results['processed_cases']} cases\n"
-                        f"Found {results['matched_activities']} activities\n"
-                        f"Tracking {results['cases_tracked']} cases"
+                    # Create progress manager
+                    progress_manager = ProgressManager(self)
+                    progress_manager.show_progress(
+                        "Analyzing Email Cache",
+                        "Preparing to analyze cached emails...",
+                        show_logs=True
                     )
-                    self.log_activity("Bootstrapped collections from Gmail")
+                    
+                    # Create worker thread
+                    self.collections_worker = CollectionsAnalyzerWorker(
+                        self.enhanced_tracker,
+                        self.case_manager
+                    )
+                    
+                    # Connect signals
+                    self.collections_worker.progress_update.connect(
+                        lambda pct, msg: progress_manager.update(pct, msg)
+                    )
+                    self.collections_worker.log_message.connect(
+                        lambda msg: progress_manager.log(msg)
+                    )
+                    self.collections_worker.finished.connect(
+                        lambda success, results: self._on_collections_analysis_complete(
+                            success, results, progress_manager
+                        )
+                    )
+                    self.collections_worker.error.connect(
+                        lambda err: self._on_collections_analysis_error(err, progress_manager)
+                    )
+                    
+                    # Start analysis
+                    self.collections_worker.start()
+                    # Process events to keep dialog responsive
+                    while self.collections_worker.isRunning():
+                        QApplication.processEvents()
+                        self.collections_worker.wait(100)
+                    
+                else:
+                    # Fallback to standard bootstrap with progress context
+                    with ProgressContext(self, "Analyzing Email Cache", 
+                                       "Analyzing email patterns...", 
+                                       pulse=True) as progress:
+                        results = self.collections_tracker.bootstrap_from_gmail_direct(
+                            self.gmail_service,
+                            self.case_manager
+                        )
+                        
+                        if results:
+                            QMessageBox.information(
+                                self, "Success",
+                                f"Processed {results['processed_cases']} cases\n"
+                                f"Found {results['matched_activities']} activities\n"
+                                f"Tracking {results['cases_tracked']} cases"
+                            )
+                            self.log_activity("Bootstrapped collections from Gmail")
                 
             except Exception as e:
                 QApplication.restoreOverrideCursor()
                 QMessageBox.critical(self, "Error", f"Bootstrap failed: {str(e)}")
+    
+    def _on_collections_analysis_complete(self, success, results, progress_manager):
+        """Handle collections analysis completion"""
+        progress_manager.close()
+        if success:
+            QMessageBox.information(self, "Success", "Collections analysis complete!")
+            self.log_activity("Completed collections analysis from cache")
+            # Refresh stale cases view if visible
+            if hasattr(self, 'stale_cases_tab'):
+                self.stale_cases_tab.refresh_analysis()
+        else:
+            QMessageBox.warning(self, "Warning", "Analysis completed with warnings. Check logs for details.")
+    
+    def _on_collections_analysis_error(self, error, progress_manager):
+        """Handle collections analysis error"""
+        progress_manager.close()
+        QMessageBox.critical(self, "Error", f"Analysis failed: {error}")
+        self.log_activity(f"Collections analysis error: {error}")
     
     def clear_cache(self):
         """Clear stale case cache"""
@@ -2488,13 +3734,23 @@ Case Aging:
             )
             
             if reply == QMessageBox.Yes:
-                QApplication.setOverrideCursor(Qt.WaitCursor)
-                
                 try:
-                    # Process the session notes
-                    results = asyncio.run(process_session_cms_notes())
-                    
-                    QApplication.restoreOverrideCursor()
+                    with ProgressContext(self, "Processing CMS Notes", 
+                                       f"Processing {pending_count} CMS notes...", 
+                                       maximum=pending_count) as progress:
+                        
+                        # Create a wrapper to update progress
+                        async def process_with_progress():
+                            processed = 0
+                            async for result in process_session_cms_notes():
+                                processed += 1
+                                progress.update(processed, f"Processing note {processed}/{pending_count}...")
+                                if progress.is_canceled():
+                                    break
+                            return result
+                        
+                        # Process the session notes
+                        results = asyncio.run(process_with_progress())
                     
                     if results:
                         success_msg = f"""

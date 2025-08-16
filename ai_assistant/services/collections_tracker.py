@@ -490,13 +490,14 @@ class CollectionsTracker:
             logger.error(f"Error parsing email date '{date_string}': {e}")
             return None
     
-    def get_comprehensive_stale_cases(self, case_manager, exclude_acknowledged=True):
+    def get_comprehensive_stale_cases(self, case_manager, exclude_acknowledged=True, progress_callback=None):
         """
         Get comprehensive stale case analysis using cached bootstrap data - FAST!
         
         Args:
             case_manager: CaseManager instance
             exclude_acknowledged: Whether to filter out acknowledged cases
+            progress_callback: Optional callback for progress updates (message, percentage)
         """
         # Check if we have cached stale analysis and it's recent (less than 1 hour old)
         if (hasattr(self, '_cached_stale_results') and 
@@ -513,6 +514,9 @@ class CollectionsTracker:
                 return self._cached_stale_results
         
         logger.info("Generating fresh stale case analysis from bootstrap data...")
+        
+        if progress_callback:
+            progress_callback("Loading recent sent emails...", 10)
         
         # Parse recent sent emails to update contact dates
         logger.info("Loading recent sent emails...")
@@ -552,8 +556,17 @@ class CollectionsTracker:
         
         logger.info(f"Analyzing {len(all_spreadsheet_cases)} cases from spreadsheet against bootstrap data...")
         
+        if progress_callback:
+            progress_callback("Analyzing cases...", 20)
+        
+        total_to_analyze = len(all_spreadsheet_cases)
+        
         # Now check each case from spreadsheet against bootstrap data
-        for pv in all_spreadsheet_cases:
+        for idx, pv in enumerate(all_spreadsheet_cases):
+            # Update progress
+            if progress_callback and idx % 50 == 0:
+                percentage = 20 + int((idx / total_to_analyze) * 70)  # Progress from 20% to 90%
+                progress_callback(f"Analyzing case {idx}/{total_to_analyze}...", percentage)
             # Get case info from spreadsheet
             try:
                 case_info = self._get_case_basic_info(case_manager, pv)

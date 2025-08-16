@@ -20,11 +20,12 @@ logger = logging.getLogger(__name__)
 class BulkEmailService:
     """Service for bulk email processing with approval workflow"""
     
-    def __init__(self, gmail_service, case_manager, ai_service, collections_tracker=None):
+    def __init__(self, gmail_service, case_manager, ai_service, collections_tracker=None, email_cache_service=None):
         self.gmail_service = gmail_service
         self.case_manager = case_manager
         self.ai_service = ai_service
         self.collections_tracker = collections_tracker
+        self.email_cache = email_cache_service
         
         # Test mode configuration
         self.test_mode = False
@@ -63,6 +64,8 @@ class BulkEmailService:
         # Email queue for batch processing
         self.email_queue = []
         self.categorized_cases = {}
+        self.categorization_timestamp = None
+        self.categorization_cache_duration = 300  # Cache for 5 minutes
     
     def load_sent_pids(self):
         """Load already sent PIDs from log file"""
@@ -211,15 +214,101 @@ class BulkEmailService:
         
         return f"Test mode {status.lower()}. " + (f"Emails will go to: {self.test_email}" if enabled else "")
     
-    def categorize_cases(self, active_only: bool = True) -> Dict:
-        """Categorize cases for bulk processing"""
+    def needs_recategorization(self) -> bool:
+        """Check if we need to recategorize cases"""
+        if not self.categorized_cases or not self.categorization_timestamp:
+            return True
+        
+        # Check if cache has expired
+        time_since_cache = time.time() - self.categorization_timestamp
+        if time_since_cache > self.categorization_cache_duration:
+            return True
+        
+        return False
+    
+    def force_recategorization(self):
+        """Force recategorization on next call"""
+        self.categorization_timestamp = None
+        self.categorized_cases = {}
+        logger.info("Categorization cache cleared - will recategorize on next request")
+    
+    def set_cache_duration(self, seconds: int):
+        """Set cache duration in seconds"""
+        self.categorization_cache_duration = seconds
+        logger.info(f"Cache duration set to {seconds} seconds")
+    
+    def get_active_cases(self) -> List[Dict]:
+        """Get all active cases with full information including balance"""
         try:
             df = self.case_manager.df
+            active_cases = []
+            
+            for _, row in df.iterrows():
+                case_info = self.case_manager.format_case(row)
+                
+                # Skip non-active cases
+                if case_info.get("Status", "").lower() != "active":
+                    continue
+                
+                # Format case data with all needed fields
+                # DOI will come through properly from case_manager which reads column E
+                case_data = {
+                    "pv": case_info.get("PV", ""),
+                    "cms": case_info.get("CMS", ""),
+                    "name": case_info.get("Name", ""),
+                    "doi": case_info.get("DOI", ""),  # This comes from column E (index 4)
+                    "attorney_email": case_info.get("Attorney Email", ""),
+                    "law_firm": case_info.get("Law Firm", ""),
+                    "status": case_info.get("Status", ""),
+                    "Balance": case_info.get("Balance", 0.0),
+                    "full_case": case_info
+                }
+                
+                active_cases.append(case_data)
+            
+            # Sort by balance descending
+            active_cases.sort(key=lambda x: x.get("Balance", 0.0), reverse=True)
+            
+            return active_cases
+            
+        except Exception as e:
+            logger.error(f"Error getting active cases: {e}")
+            return []
+    
+    def categorize_cases(self, active_only: bool = True, force_refresh: bool = False, check_ccp_335_1: bool = False, progress_callback=None, progress=None) -> Dict:
+        """Categorize cases for bulk processing with caching
+        
+        Args:
+            active_only: Whether to only include active cases
+            force_refresh: Force refresh of categorization
+            check_ccp_335_1: Whether to check for CCP 335.1 eligibility (slow operation)
+            progress_callback: Optional callback function for progress updates (message, percentage)
+            progress: Optional ProgressManager for UI updates
+        """
+        # Check if we can use cached results
+        if not force_refresh and not self.needs_recategorization():
+            logger.info("Using cached case categorization")
+            return self.categorized_cases
+        
+        logger.info("Starting case categorization...")
+        start_time = time.time()
+        
+        try:
+            df = self.case_manager.df
+            total_cases = len(df)
+            
+            if progress:
+                progress.set_message("Initializing categories...")
+                progress.update(0)
+                progress.log("📂 Analyzing case data...")
+            elif progress_callback:
+                progress_callback("Initializing categories...", 0)
             
             categories = {
                 "no_recent_contact": [],
                 "missing_doi": [],
                 "old_cases": [],
+                "ccp_335_1": [],  # Cases needing CCP 335.1 statute inquiry
                 "by_firm": {},
                 "never_contacted": [],
                 "high_value": [],  # Cases with high potential value
@@ -229,7 +318,17 @@ class BulkEmailService:
                 "low_priority": []  # Score 0-39
             }
             
-            for _, row in df.iterrows():
+            for idx, row in df.iterrows():
+                # Update progress
+                if progress and idx % 10 == 0:  # Update every 10 cases
+                    percentage = int((idx / total_cases) * 100)
+                    progress.update(percentage, f"Processing case {idx+1} of {total_cases}")
+                    progress.log(f"Analyzing PV {row.get('pv', 'Unknown')}...")
+                    progress.process_events()  # Keep UI responsive
+                elif progress_callback and idx % 10 == 0:  # Update every 10 cases
+                    percentage = int((idx / total_cases) * 100)
+                    progress_callback(f"Processing case {idx}/{total_cases}...", percentage)
+                
                 case_info = self.case_manager.format_case(row)
                 
                 # Skip if not active (if filtering)
@@ -256,12 +355,18 @@ class BulkEmailService:
                     "full_case": case_info
                 }
                 
-                # Categorize by missing DOI
+                # Categorize by missing DOI - ONLY 2099 dates should be considered missing
                 doi_raw = case_data["doi"]
-                doi_str = str(doi_raw) if doi_raw else ""
+                doi_str = str(doi_raw).strip() if doi_raw else ""
                 
-                if "2099" in doi_str or not doi_raw or doi_str == "nan" or doi_str == "NaT":
+                # Only consider 2099 dates as truly missing DOI
+                if "2099" in doi_str:
                     categories["missing_doi"].append(case_data)
+                # Empty or invalid dates go to a different category if needed
+                elif not doi_raw or doi_str in ["nan", "NaT", ""]:
+                    # These have blank DOI fields but aren't the 2099 placeholder
+                    # Still add to missing_doi but could be separated if needed
+                    pass  # Don't add to missing_doi unless it's specifically 2099
                 
                 # Categorize by firm
                 firm_email = case_data["attorney_email"]
@@ -270,7 +375,7 @@ class BulkEmailService:
                         categories["by_firm"][firm_email] = []
                     categories["by_firm"][firm_email].append(case_data)
                 
-                # Check for old cases (>2 years)
+                # Check for old cases (>2 years) and CCP 335.1 eligibility
                 if doi_raw and doi_str != "2099" and doi_str != "nan" and doi_str != "NaT":
                     try:
                         # Handle datetime object or string
@@ -285,8 +390,18 @@ class BulkEmailService:
                         years_old = (datetime.now() - doi_date).days / 365
                         if years_old > 2:
                             categories["old_cases"].append(case_data)
-                    except:
-                        pass
+                            
+                            # Only check CCP 335.1 eligibility if explicitly requested
+                            # This is a slow operation that checks email cache
+                            if check_ccp_335_1:
+                                # Import here to avoid circular dependency
+                                from templates.ccp_335_1_template import is_ccp_335_1_eligible
+                                eligible = is_ccp_335_1_eligible(case_data, self.email_cache)
+                                if eligible:
+                                    categories["ccp_335_1"].append(case_data)
+                                    logger.debug(f"Case {pv} added to CCP 335.1 category - DOI: {years_old:.1f} years old")
+                    except Exception as e:
+                        logger.debug(f"Error processing DOI for case {pv}: {e}")
                 
                 # Use collections tracker data if available
                 if self.collections_tracker:
@@ -319,11 +434,17 @@ class BulkEmailService:
             for priority_cat in ["high_priority", "medium_priority", "low_priority"]:
                 categories[priority_cat].sort(key=lambda x: x.get("priority_score", 0), reverse=True)
             
+            # Cache the results
+            self.categorized_cases = categories
+            self.categorization_timestamp = time.time()
+            
             # Log category statistics
-            logger.info("Case categorization complete:")
+            elapsed_time = time.time() - start_time
+            logger.info(f"Case categorization complete in {elapsed_time:.2f} seconds:")
             logger.info(f"  🔴 High Priority (70-100): {len(categories['high_priority'])}")
             logger.info(f"  🟡 Medium Priority (40-69): {len(categories['medium_priority'])}")
             logger.info(f"  🟢 Low Priority (0-39): {len(categories['low_priority'])}")
+            logger.info(f"  ⚖️ CCP 335.1 (>2yr statute): {len(categories['ccp_335_1'])}")
             logger.info(f"  Missing DOI: {len(categories['missing_doi'])}")
             logger.info(f"  Old cases: {len(categories['old_cases'])}")
             logger.info(f"  No recent contact: {len(categories['no_recent_contact'])}")
@@ -336,25 +457,64 @@ class BulkEmailService:
             logger.error(f"Error categorizing cases: {e}")
             raise
     
-    def generate_email_content(self, case_data: Dict) -> Dict:
+    def generate_email_content(self, case_data: Dict, email_type: str = "standard") -> Dict:
         """Generate email content for a case"""
         try:
+            # Check if this is a CCP 335.1 email
+            if email_type == "ccp_335_1":
+                from templates.ccp_335_1_template import get_ccp_335_1_email
+                subject, body = get_ccp_335_1_email(case_data)
+                
+                # Modify for test mode
+                original_to = case_data["attorney_email"]
+                to_email = self.test_email if self.test_mode else original_to
+                if self.test_mode:
+                    subject = f"[TEST MODE - Original To: {original_to}] {subject}"
+                
+                return {
+                    "pv": case_data["pv"],
+                    "to": to_email,
+                    "original_to": original_to,
+                    "subject": subject,
+                    "body": body,
+                    "name": case_data["name"],
+                    "doi": case_data["doi"],
+                    "case_data": case_data,
+                    "email_type": "ccp_335_1"
+                }
+            
+            # Standard email generation
             name = case_data["name"].title() if case_data["name"] else "UNKNOWN"
             
             # Handle DOI as either string or datetime object
-            doi_raw = case_data["doi"]
+            doi_raw = case_data.get("doi")
             doi = ""
+            is_unknown_doi = False
             
-            if doi_raw and str(doi_raw) != "nan" and str(doi_raw) != "NaT":
-                # Check if it's a datetime object
-                if hasattr(doi_raw, 'strftime'):
-                    # It's a datetime object
-                    doi = doi_raw.strftime("%m/%d/%Y")
-                else:
-                    # It's a string
-                    doi_str = str(doi_raw)
-                    # Extract just the date part if it contains time
-                    doi = doi_str.split()[0] if doi_str else ""
+            if doi_raw:
+                doi_str = str(doi_raw).strip()
+                
+                # Check if it's specifically the 2099 placeholder date
+                if "2099" in doi_str:
+                    is_unknown_doi = True
+                    doi = ""
+                elif doi_str and doi_str not in ["nan", "NaT", ""]:
+                    # Valid date - format it properly
+                    if hasattr(doi_raw, 'strftime'):
+                        # It's a datetime object
+                        doi = doi_raw.strftime("%m/%d/%Y")
+                    else:
+                        # It's a string - try to parse and format it
+                        try:
+                            # Remove time component if present
+                            date_part = doi_str.split()[0] if ' ' in doi_str else doi_str
+                            # Try to parse and reformat
+                            import pandas as pd
+                            parsed_date = pd.to_datetime(date_part)
+                            doi = parsed_date.strftime("%m/%d/%Y")
+                        except:
+                            # If parsing fails, use the original string
+                            doi = date_part
             
             pv = case_data["pv"]
             attorney_email = case_data["attorney_email"]
@@ -365,12 +525,17 @@ class BulkEmailService:
             followup_line = random.choice(self.followups)
             
             # Subject line based on DOI availability
-            if "2099" in str(doi) or not doi:
+            # ONLY mark as UNKNOWN if it's specifically a 2099 date
+            if is_unknown_doi:
                 subject = f"{name} UNKNOWN DOI // Prohealth Advanced Imaging"
                 extra_line = "\n\nCould you please provide the accurate date of loss for this case?"
-            else:
+            elif doi:
                 subject = f"{name} DOI {doi} // Prohealth Advanced Imaging"
                 extra_line = ""
+            else:
+                # If we truly don't have a DOI (empty field), still include it but don't mark as UNKNOWN
+                subject = f"{name} // Prohealth Advanced Imaging"
+                extra_line = "\n\nCould you please provide the date of loss for this case?"
             
             # Modify for test mode
             original_to = attorney_email
@@ -414,6 +579,12 @@ Prohealth Advanced Imaging
         try:
             emails = []
             
+            # If CCP 335.1 category is requested, ensure we run the check
+            if category == "ccp_335_1":
+                # Force recategorization with CCP 335.1 check enabled
+                logger.info("CCP 335.1 category requested - running eligibility checks...")
+                self.categorize_cases(force_refresh=True, check_ccp_335_1=True)
+            
             # Check if this is a stale case category
             stale_categories = ["critical", "high_priority", "needs_follow_up", "no_response"]
             
@@ -454,7 +625,7 @@ Prohealth Advanced Imaging
                         try:
                             pv = stale_case.get("pv")
                             df = self.case_manager.df
-                            case_row = df[df['PV'].astype(str) == str(pv)]
+                            case_row = df[df[1].astype(str) == str(pv)]
                             if not case_row.empty:
                                 full_case = self.case_manager.format_case(case_row.iloc[0])
                                 formatted_case["doi"] = full_case.get("DOI", "")
@@ -476,6 +647,20 @@ Prohealth Advanced Imaging
                 # Get cases for category
                 cases = self.categorized_cases.get(category, [])
             
+            # Filter out acknowledged cases for non-stale categories
+            if category not in stale_categories:
+                from services.case_acknowledgment_service import CaseAcknowledgmentService
+                ack_service = CaseAcknowledgmentService()
+                
+                filtered_cases = []
+                for case in cases:
+                    pv = case.get("pv")
+                    if ack_service.is_acknowledged(pv):
+                        logger.info(f"Skipping acknowledged case {pv}")
+                        continue
+                    filtered_cases.append(case)
+                cases = filtered_cases
+            
             # Apply limit if specified
             if limit:
                 cases = cases[:limit]
@@ -483,7 +668,11 @@ Prohealth Advanced Imaging
             # Generate email content for each case
             for case in cases:
                 try:
-                    email = self.generate_email_content(case)
+                    # Check if this is CCP 335.1 category
+                    if category == "ccp_335_1":
+                        email = self.generate_email_content(case, email_type="ccp_335_1")
+                    else:
+                        email = self.generate_email_content(case)
                     emails.append(email)
                 except Exception as e:
                     logger.error(f"Error generating email for case {case.get('pv')}: {e}")
@@ -822,7 +1011,7 @@ Prohealth Advanced Imaging
                 case_found = False
                 
                 # Try PV match first
-                pv_match = df[df['PV'].astype(str) == num]
+                pv_match = df[df[1].astype(str) == num]
                 if not pv_match.empty:
                     case_found = True
                     row = pv_match.iloc[0]

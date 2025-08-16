@@ -151,19 +151,59 @@ class CaseManager:
     def format_case(self, row):
         """Format case data into dictionary with safe access"""
         try:
+            # Get balance from column AB (index 27) and convert to float
+            balance_raw = row[27] if len(row) > 27 else ""
+            balance = 0.0
+            if balance_raw:
+                try:
+                    # Remove any currency symbols and commas
+                    balance_str = str(balance_raw).replace('$', '').replace(',', '').strip()
+                    if balance_str and balance_str != 'nan' and balance_str != '':
+                        balance = float(balance_str)
+                except (ValueError, TypeError):
+                    balance = 0.0
+            
+            # Get and format DOI - ensure no timestamps
+            doi_raw = row[4] if len(row) > 4 else ""
+            doi_formatted = ""
+            
+            if doi_raw:
+                doi_str = str(doi_raw).strip()
+                # Check for 2099 placeholder date
+                if "2099" in doi_str:
+                    doi_formatted = doi_raw  # Keep as is for 2099 dates
+                elif doi_str and doi_str not in ["nan", "NaT", ""]:
+                    try:
+                        # Parse and format date without time
+                        # Remove any time component first
+                        date_part = doi_str.split()[0] if ' ' in doi_str else doi_str
+                        # If it's already in MM/DD/YYYY format, keep it
+                        if '/' in date_part and len(date_part.split('/')) == 3:
+                            doi_formatted = date_part
+                        else:
+                            # Parse and reformat
+                            parsed_date = pd.to_datetime(date_part)
+                            # Format as MM/DD/YYYY without time
+                            doi_formatted = parsed_date.strftime("%m/%d/%Y")
+                    except:
+                        # If parsing fails, just use the date part without time
+                        doi_formatted = doi_str.split()[0] if ' ' in doi_str else doi_str
+            
             return {
                 "CMS": row[0] if len(row) > 0 else "",
                 "PV": row[1] if len(row) > 1 else "",
                 "Status": row[2] if len(row) > 2 else "",
                 "Name": row[3] if len(row) > 3 else "",
-                "DOI": row[4] if len(row) > 4 else "",
+                "DOI": doi_formatted,
                 "Attorney Email": row[18] if len(row) > 18 else "",
                 "Attorney Phone": row[19] if len(row) > 19 else "",
                 "Law Firm": row[12] if len(row) > 12 else "",
+                "Balance": balance,
             }
         except Exception as e:
             logger.error(f"Error formatting case: {e}")
             return {
                 "CMS": "", "PV": "", "Status": "", "Name": "", 
-                "DOI": "", "Attorney Email": "", "Attorney Phone": "", "Law Firm": ""
+                "DOI": "", "Attorney Email": "", "Attorney Phone": "", "Law Firm": "",
+                "Balance": 0.0
             }

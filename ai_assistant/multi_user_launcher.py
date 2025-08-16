@@ -6,6 +6,7 @@ Main entry point that handles user setup and launches the application
 import sys
 import os
 import logging
+from datetime import datetime, timedelta
 from PyQt5.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout,
     QLabel, QComboBox, QPushButton, QMessageBox
@@ -154,10 +155,11 @@ def launch_main_application(user_email):
     
     # Import and modify the main application to use multi-user services
     import enhanced_gui_app
+    from services.cms_integration import CMSIntegrationService
     
     # Monkey-patch the services to use multi-user versions
     original_gmail_init = enhanced_gui_app.GmailService.__init__
-    original_cms_init = enhanced_gui_app.CMSIntegration.__init__
+    original_cms_init = CMSIntegrationService.__init__
     
     def gmail_init_wrapper(self):
         # Initialize with current user
@@ -171,18 +173,26 @@ def launch_main_application(user_email):
         self.username = multi_cms.username
         self.password = multi_cms.password
         self.login_url = multi_cms.login_url
-        self.use_persistent = use_persistent_session
+        self.use_persistent_session = use_persistent_session
+        self.use_persistent = use_persistent_session  # Some code might use this
         self.browser = None
         self.context = None
         self.page = None
+        self.logged_in = False
+        self.note_type_value = "COR"
+        self.next_contact_date = (datetime.today() + timedelta(days=30)).strftime("%m/%d/%Y")
     
     # Apply patches
     enhanced_gui_app.GmailService.__init__ = gmail_init_wrapper
-    enhanced_gui_app.CMSIntegration.__init__ = cms_init_wrapper
+    CMSIntegrationService.__init__ = cms_init_wrapper
+    
+    # Also patch it in the enhanced_gui_app module namespace if it exists
+    if hasattr(enhanced_gui_app, 'CMSIntegration'):
+        enhanced_gui_app.CMSIntegration.__init__ = cms_init_wrapper
     
     # Create and show main window
     try:
-        window = enhanced_gui_app.MedicalLienAssistant()
+        window = enhanced_gui_app.EnhancedMainWindow()
         window.setWindowTitle(f"Medical Lien Assistant - {user_email}")
         window.show()
         return window

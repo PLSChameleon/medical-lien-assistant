@@ -59,35 +59,57 @@ class EmailCacheService:
         except Exception as e:
             logger.error(f"Error saving cadence analysis: {e}")
     
-    def bootstrap_all_emails(self):
+    def bootstrap_all_emails(self, progress=None):
         """Bootstrap cache with ALL emails (sent and received) for case categorization"""
-        print("🚀 Bootstrapping email cache with ALL emails (sent & received)...")
-        print("   This may take several minutes for large email histories...")
-        return self._full_sync(max_results=None)
+        if not progress:
+            print("🚀 Bootstrapping email cache with ALL emails (sent & received)...")
+            print("   This may take several minutes for large email histories...")
+        return self._full_sync(max_results=None, progress=progress)
     
-    def update_cache(self, incremental=True):
+    def bootstrap_all_emails_threaded(self, progress_callback=None):
+        """Thread-safe version of bootstrap_all_emails for background execution"""
+        return self._full_sync_threaded(max_results=None, progress_callback=progress_callback)
+    
+    def update_cache(self, incremental=True, progress=None):
         """Update the email cache (incremental by default)"""
-        return self.download_sent_emails(max_results=None, incremental=incremental)
+        return self.download_sent_emails(max_results=None, incremental=incremental, progress=progress)
     
-    def download_sent_emails(self, max_results=None, incremental=True):
+    def download_sent_emails(self, max_results=None, incremental=True, progress=None):
         """Download sent emails and cache them
         
         Args:
             max_results (int): Maximum number of emails to fetch (None = all emails)
             incremental (bool): If True, only fetch new emails since last sync
+            progress: Optional progress manager for UI updates
         """
         try:
             if incremental and self._can_do_incremental_update():
-                return self._incremental_update(max_results)
+                return self._incremental_update(max_results, progress=progress)
             else:
-                return self._full_sync(max_results)
+                return self._full_sync(max_results, progress=progress)
             
         except Exception as e:
             logger.error(f"Error downloading sent emails: {e}")
-            print(f"❌ Error downloading emails: {e}")
+            if progress:
+                progress.log(f"❌ Error: {e}")
+            else:
+                print(f"❌ Error downloading emails: {e}")
             return []
     
-    def analyze_cadence(self, max_emails_for_cadence=500):
+    def download_sent_emails_threaded(self, max_results=None, incremental=True, progress_callback=None):
+        """Thread-safe version for background execution"""
+        try:
+            if incremental and self._can_do_incremental_update():
+                return self._incremental_update_threaded(max_results, progress_callback=progress_callback)
+            else:
+                return self._full_sync_threaded(max_results, progress_callback=progress_callback)
+        except Exception as e:
+            logger.error(f"Error downloading sent emails: {e}")
+            if progress_callback:
+                progress_callback(0, None, f"❌ Error: {e}")
+            return []
+    
+    def analyze_cadence(self, max_emails_for_cadence=500, progress=None):
         """Analyze email cadence and style from cached SENT emails only
         
         Args:
@@ -374,9 +396,13 @@ class EmailCacheService:
             len(self.cache['emails']) > 0
         )
     
-    def _full_sync(self, max_results=None):
+    def _full_sync(self, max_results=None, progress=None):
         """Perform a full sync of all emails (sent and received)"""
-        if max_results:
+        if progress:
+            progress.set_message("Searching for emails...")
+            progress.log("📥 Starting full email sync")
+            progress.process_events()
+        elif max_results:
             print(f"📥 Performing full sync: Downloading {max_results} emails...")
         else:
             print(f"📥 Performing full sync: Downloading ALL emails (sent & received)...")
@@ -384,13 +410,27 @@ class EmailCacheService:
         # Search for ALL emails (both sent and received)
         # Using label:sent OR label:inbox to get both directions
         query = "in:sent OR in:inbox"
-        sent_emails = self.gmail_service.search_messages(query, max_results)
+        
+        if progress:
+            progress.log("🔍 Searching Gmail: in:sent OR in:inbox")
+            progress.process_events()
+            
+        sent_emails = self.gmail_service.search_messages(query, max_results, progress=progress)
         
         if not sent_emails:
-            print("❌ No sent emails found")
+            msg = "❌ No emails found"
+            if progress:
+                progress.log(msg)
+            else:
+                print(msg)
             return []
         
-        print(f"✅ Downloaded {len(sent_emails)} emails (sent & received)")
+        msg = f"✅ Found {len(sent_emails)} emails (sent & received)"
+        if progress:
+            progress.log(msg)
+            progress.process_events()
+        else:
+            print(msg)
         
         # Get the latest history ID from the most recent email
         latest_history_id = None
@@ -418,9 +458,13 @@ class EmailCacheService:
         
         return sent_emails
     
-    def _incremental_update(self, max_results=None):
+    def _incremental_update(self, max_results=None, progress=None):
         """Perform an incremental update, only fetching new emails since last sync"""
-        print("🔄 Performing incremental update: Fetching only new emails...")
+        if progress:
+            progress.set_message("Performing incremental update...")
+            progress.log("🔄 Fetching only new emails since last sync")
+        else:
+            print("🔄 Performing incremental update: Fetching only new emails...")
         
         last_sync = datetime.fromisoformat(self.cache['last_sync_time'])
         time_diff = datetime.now() - last_sync
@@ -431,25 +475,44 @@ class EmailCacheService:
         # Build query for new emails (both sent and received) since last sync
         query = f"(in:sent OR in:inbox) after:{after_date}"
         
-        print(f"   Checking for emails sent after {after_date} ({time_diff.days} days ago)")
+        msg = f"Checking for emails after {after_date} ({time_diff.days} days ago)"
+        if progress:
+            progress.log(msg)
+            progress.process_events()
+        else:
+            print(f"   {msg}")
         
         # Fetch new emails (no limit unless specified)
-        new_emails = self.gmail_service.search_messages(query, max_results)
+        new_emails = self.gmail_service.search_messages(query, max_results, progress=progress)
         
         if not new_emails:
-            print("✅ No new emails since last sync")
+            msg = "✅ No new emails since last sync"
+            if progress:
+                progress.log(msg)
+            else:
+                print(msg)
             self.cache['last_updated'] = datetime.now().isoformat()
             self._save_cache()
             return self.cache['emails']
         
-        print(f"📬 Found {len(new_emails)} new emails")
+        msg = f"📬 Found {len(new_emails)} new emails"
+        if progress:
+            progress.log(msg)
+            progress.process_events()
+        else:
+            print(msg)
         
         # Merge new emails with existing cache
         existing_ids = {email['id'] for email in self.cache['emails']}
         truly_new = [email for email in new_emails if email['id'] not in existing_ids]
         
         if truly_new:
-            print(f"   Adding {len(truly_new)} new unique emails to cache")
+            msg = f"Adding {len(truly_new)} new unique emails to cache"
+            if progress:
+                progress.log(msg)
+                progress.process_events()
+            else:
+                print(f"   {msg}")
             # Add new emails to the beginning of the list (most recent first)
             self.cache['emails'] = truly_new + self.cache['emails']
             
@@ -472,20 +535,31 @@ class EmailCacheService:
         
         # Re-analyze cadence with updated data
         if truly_new:
-            print("🧠 Updating cadence analysis with new data...")
-            self.analyze_cadence()
+            msg = "🧠 Updating cadence analysis with new data..."
+            if progress:
+                progress.log(msg)
+                progress.process_events()
+            else:
+                print(msg)
+            self.analyze_cadence(progress=progress)
         
-        print(f"✅ Cache updated: {len(self.cache['emails'])} total emails")
+        msg = f"✅ Cache updated: {len(self.cache['emails'])} total emails"
+        if progress:
+            progress.log(msg)
+        else:
+            print(msg)
         return self.cache['emails']
     
-    def force_full_sync(self, max_results=None):
+    def force_full_sync(self, max_results=None, progress=None):
         """Force a full sync regardless of cache state
         
         Args:
             max_results (int): Maximum emails to fetch (None = all emails)
+            progress: Optional progress manager for UI updates
         """
-        print("⚡ Forcing full sync...")
-        return self._full_sync(max_results)
+        if not progress:
+            print("⚡ Forcing full sync...")
+        return self._full_sync(max_results, progress=progress)
     
     def get_cache_stats(self):
         """Get statistics about the current cache"""
@@ -582,3 +656,246 @@ class EmailCacheService:
                 matching_emails.append(email)
         
         return matching_emails
+    
+    def get_case_emails(self, pv_number):
+        """Get all emails related to a specific PV number
+        
+        Args:
+            pv_number (str): PV number to search for
+            
+        Returns:
+            list: Emails related to this case
+        """
+        if not pv_number:
+            return []
+        
+        # Search for PV number in various formats
+        search_terms = [
+            str(pv_number),
+            f"PV#{pv_number}",
+            f"PV {pv_number}",
+            f"Reference #: {pv_number}"
+        ]
+        
+        matching_emails = []
+        for term in search_terms:
+            emails = self.get_all_emails_for_case(term)
+            matching_emails.extend(emails)
+        
+        # Remove duplicates based on email ID
+        seen_ids = set()
+        unique_emails = []
+        for email in matching_emails:
+            email_id = email.get('id')
+            if email_id and email_id not in seen_ids:
+                seen_ids.add(email_id)
+                unique_emails.append(email)
+        
+        return unique_emails
+    
+    def has_litigation_status(self, pv_number, attorney_email=None):
+        """Check if we have received litigation status information for a case
+        
+        Args:
+            pv_number (str): PV number of the case
+            attorney_email (str, optional): Attorney email to check responses from
+            
+        Returns:
+            dict: Contains 'has_status' boolean and 'details' if found
+        """
+        litigation_keywords = [
+            'litigation', 'lawsuit', 'filed', 'case number', 'venue',
+            'settled', 'settlement', 'resolved', 'dismissed',
+            'court', 'trial', 'verdict', 'judgment', 'complaint',
+            'docket', 'superior court', 'federal court', 'arbitration'
+        ]
+        
+        # Get emails for this case
+        case_emails = self.get_case_emails(pv_number)
+        
+        # Filter by attorney email if provided
+        if attorney_email:
+            case_emails = [
+                email for email in case_emails
+                if attorney_email.lower() in email.get('from', '').lower()
+            ]
+        
+        # Check for litigation keywords
+        for email in case_emails:
+            # Skip our sent emails
+            if self._is_sent_email(email):
+                continue
+            
+            body = email.get('body', '').lower()
+            subject = email.get('subject', '').lower()
+            snippet = email.get('snippet', '').lower()
+            
+            email_text = f"{subject} {body} {snippet}"
+            
+            # Check for litigation keywords
+            found_keywords = [kw for kw in litigation_keywords if kw in email_text]
+            
+            if found_keywords:
+                return {
+                    'has_status': True,
+                    'details': {
+                        'email_date': email.get('date'),
+                        'from': email.get('from'),
+                        'subject': email.get('subject'),
+                        'keywords_found': found_keywords,
+                        'snippet': email.get('snippet')[:200]
+                    }
+                }
+        
+        return None
+    
+    def _full_sync_threaded(self, max_results=None, progress_callback=None):
+        """Thread-safe version of full sync for background execution"""
+        if progress_callback:
+            progress_callback(0, "Searching for emails...", "📥 Starting full email sync")
+        elif max_results:
+            print(f"📥 Performing full sync: Downloading {max_results} emails...")
+        else:
+            print(f"📥 Performing full sync: Downloading ALL emails (sent & received)...")
+        
+        # Search for ALL emails (both sent and received)
+        query = "in:sent OR in:inbox"
+        
+        if progress_callback:
+            progress_callback(5, "Searching Gmail...", f"🔍 Query: {query}")
+        
+        # Use threaded Gmail search
+        sent_emails = self.gmail_service.search_messages_threaded(query, max_results, progress_callback)
+        
+        if not sent_emails:
+            msg = "❌ No emails found"
+            if progress_callback:
+                progress_callback(100, msg, msg)
+            else:
+                print(msg)
+            return []
+        
+        msg = f"✅ Found {len(sent_emails)} emails (sent & received)"
+        if progress_callback:
+            progress_callback(90, "Saving cache...", msg)
+        else:
+            print(msg)
+        
+        # Get the latest history ID from the most recent email
+        latest_history_id = None
+        if sent_emails:
+            try:
+                latest_msg = self.gmail_service.get_message(sent_emails[0]['id'])
+                if latest_msg:
+                    latest_history_id = latest_msg.get('historyId')
+            except:
+                pass
+        
+        # Update cache
+        self.cache = {
+            "emails": sent_emails,
+            "last_updated": datetime.now().isoformat(),
+            "last_sync_time": datetime.now().isoformat(),
+            "last_history_id": latest_history_id,
+            "total_count": len(sent_emails)
+        }
+        
+        self._save_cache()
+        
+        if progress_callback:
+            progress_callback(95, "Analyzing cadence...", "🧠 Analyzing email patterns")
+        
+        # Analyze cadence using last 500 emails from cache
+        self.analyze_cadence()
+        
+        if progress_callback:
+            progress_callback(100, "Complete!", "✅ Email sync complete")
+        
+        return sent_emails
+    
+    def _incremental_update_threaded(self, max_results=None, progress_callback=None):
+        """Thread-safe version of incremental update for background execution"""
+        if progress_callback:
+            progress_callback(0, "Starting incremental update...", "🔄 Fetching only new emails")
+        else:
+            print("🔄 Performing incremental update: Fetching only new emails...")
+        
+        last_sync = datetime.fromisoformat(self.cache['last_sync_time'])
+        time_diff = datetime.now() - last_sync
+        
+        # Convert datetime to Gmail query format (YYYY/MM/DD)
+        after_date = last_sync.strftime('%Y/%m/%d')
+        
+        # Build query for new emails (both sent and received) since last sync
+        query = f"(in:sent OR in:inbox) after:{after_date}"
+        
+        msg = f"Checking for emails after {after_date} ({time_diff.days} days ago)"
+        if progress_callback:
+            progress_callback(10, msg, msg)
+        else:
+            print(f"   {msg}")
+        
+        # Fetch new emails
+        new_emails = self.gmail_service.search_messages_threaded(query, max_results, progress_callback)
+        
+        if not new_emails:
+            msg = "✅ No new emails since last sync"
+            if progress_callback:
+                progress_callback(100, msg, msg)
+            else:
+                print(msg)
+            self.cache['last_updated'] = datetime.now().isoformat()
+            self._save_cache()
+            return self.cache['emails']
+        
+        msg = f"📬 Found {len(new_emails)} new emails"
+        if progress_callback:
+            progress_callback(80, "Merging with cache...", msg)
+        else:
+            print(msg)
+        
+        # Merge new emails with existing cache
+        existing_ids = {email['id'] for email in self.cache['emails']}
+        truly_new = [email for email in new_emails if email['id'] not in existing_ids]
+        
+        if truly_new:
+            msg = f"Adding {len(truly_new)} new unique emails to cache"
+            if progress_callback:
+                progress_callback(85, msg, msg)
+            else:
+                print(f"   {msg}")
+            # Add new emails to the beginning of the list (most recent first)
+            self.cache['emails'] = truly_new + self.cache['emails']
+        
+        # Update metadata
+        self.cache['last_updated'] = datetime.now().isoformat()
+        self.cache['last_sync_time'] = datetime.now().isoformat()
+        self.cache['total_count'] = len(self.cache['emails'])
+        
+        # Get the latest history ID if we have new emails
+        if new_emails:
+            try:
+                latest_msg = self.gmail_service.get_message(new_emails[0]['id'])
+                if latest_msg:
+                    self.cache['last_history_id'] = latest_msg.get('historyId')
+            except:
+                pass
+        
+        self._save_cache()
+        
+        # Re-analyze cadence with updated data
+        if truly_new:
+            msg = "🧠 Updating cadence analysis with new data..."
+            if progress_callback:
+                progress_callback(95, msg, msg)
+            else:
+                print(msg)
+            self.analyze_cadence()
+        
+        msg = f"✅ Cache updated: {len(self.cache['emails'])} total emails"
+        if progress_callback:
+            progress_callback(100, msg, msg)
+        else:
+            print(msg)
+        
+        return self.cache['emails']

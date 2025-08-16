@@ -17,6 +17,8 @@ class EnhancedCollectionsTracker:
         self.email_cache = email_cache_service
         self.tracking_file = "data/collections_tracking_enhanced.json"
         self.data = self._load_tracking_data()
+        # Add tracking_data property for compatibility with worker
+        self.tracking_data = self.data.get('cases', {})
         
     def _load_tracking_data(self):
         """Load existing tracking data"""
@@ -43,6 +45,13 @@ class EnhancedCollectionsTracker:
         except Exception as e:
             logger.error(f"Error saving tracking data: {e}")
     
+    def save_tracking_data(self):
+        """Public method to save tracking data (for compatibility with worker)"""
+        # Sync tracking_data back to main data structure
+        if hasattr(self, 'tracking_data'):
+            self.data['cases'] = self.tracking_data
+        self._save_tracking_data()
+    
     def analyze_from_cache(self, case_manager):
         """
         Analyze all cases using the email cache instead of live API calls
@@ -58,8 +67,9 @@ class EnhancedCollectionsTracker:
         cache_emails = self.email_cache.cache['emails']
         logger.info(f"Analyzing {len(cache_emails)} cached emails")
         
-        # Reset tracking data for fresh analysis
+        # Reset tracking data for fresh analysis - IMPORTANT: This clears old cases
         self.data['cases'] = {}
+        logger.info("Cleared old tracking data for fresh analysis")
         
         # Get all cases from spreadsheet
         try:
@@ -115,96 +125,129 @@ class EnhancedCollectionsTracker:
             # Check if this is a sent or received email
             is_sent = self.email_cache._is_sent_email(email)
             
-            # Try to match email to cases
+            # Try to match email to cases - prioritize NAME matching
+            email_text = f"{subject} {snippet} {from_field} {to_field}"
+            matched_cases = []
+            
             for pv, case_data in all_cases.items():
-                # Build search terms for this case
-                search_terms = []
-                
-                # Add PV number with variations
-                if pv:
-                    pv_lower = pv.lower()
-                    search_terms.append(pv_lower)
-                    # Also search for common PV formats
-                    search_terms.append(f"pv {pv_lower}")
-                    search_terms.append(f"pv#{pv_lower}")
-                    search_terms.append(f"pv: {pv_lower}")
-                    search_terms.append(f"pv{pv_lower}")
-                
-                # Add patient name - handle different formats
+                # PRIMARY: Match by patient name
                 if case_data['name']:
                     name = case_data['name'].lower()
-                    search_terms.append(name)
+                    name_matched = False
                     
-                    # Also add name parts for better matching
-                    # Handle "LAST, FIRST" format
-                    if ',' in name:
-                        parts = [p.strip() for p in name.split(',')]
-                        search_terms.extend(parts)
-                        # Also add "first last" format
-                        if len(parts) == 2:
-                            search_terms.append(f"{parts[1]} {parts[0]}")
+                    # Check full name
+                    if name in email_text:
+                        name_matched = True
                     else:
-                        # Add individual name parts
-                        search_terms.extend(name.split())
+                        # Handle "LAST, FIRST" format
+                        if ',' in name:
+                            parts = [p.strip() for p in name.split(',')]
+                            # Check "first last" format
+                            if len(parts) == 2:
+                                alt_name = f"{parts[1]} {parts[0]}"
+                                if alt_name in email_text:
+                                    name_matched = True
+                                # Also check if both parts are present
+                                elif parts[0] in email_text and parts[1] in email_text:
+                                    name_matched = True
+                        else:
+                            # Check if all name parts are present
+                            name_parts = name.split()
+                            if len(name_parts) > 1 and all(part in email_text for part in name_parts):
+                                name_matched = True
+                    
+                    if name_matched:
+                        matched_cases.append((pv, case_data))
+                        continue
                 
-                # Add CMS number
+                # SECONDARY: Check CMS number if no name match
                 if case_data['cms']:
-                    search_terms.append(str(case_data['cms']).lower())
+                    cms_str = str(case_data['cms']).lower()
+                    if cms_str in email_text:
+                        matched_cases.append((pv, case_data))
+                        continue
                 
-                # Check if any search term matches the email
-                email_text = f"{subject} {snippet} {from_field} {to_field}"
+                # TERTIARY: Check PV only as last resort
+                if pv:
+                    pv_lower = pv.lower()
+                    # Check for common PV formats
+                    pv_patterns = [
+                        f"pv {pv_lower}",
+                        f"pv#{pv_lower}", 
+                        f"pv: {pv_lower}",
+                        f"pv{pv_lower}",
+                        f"file {pv_lower}",
+                        f"file#{pv_lower}"
+                    ]
+                    if any(pattern in email_text for pattern in pv_patterns):
+                        matched_cases.append((pv, case_data))
+            
+            # Handle multiple matches (duplicate names)
+            if len(matched_cases) > 1:
+                # Try to disambiguate using DOI
+                doi_matched = None
+                for pv, case_data in matched_cases:
+                    if case_data.get('doi'):
+                        # Format DOI for matching (remove time component if present)
+                        doi_str = str(case_data['doi']).split()[0] if case_data['doi'] else ""
+                        if doi_str and doi_str in email_text:
+                            doi_matched = (pv, case_data)
+                            break
                 
-                matched = False
-                for term in search_terms:
-                    if term and term in email_text:
-                        matched = True
-                        break
+                # If DOI helped disambiguate, use that match
+                if doi_matched:
+                    matched_cases = [doi_matched]
+                # Otherwise, log warning about duplicate and match all
+                else:
+                    case_names = [case[1]['name'] for case in matched_cases]
+                    logger.debug(f"Multiple cases matched for email: {case_names[:3]}")
+            
+            # Process matches
+            for pv, case_data in matched_cases:
+                matches_found += 1
                 
-                if matched:
-                    matches_found += 1
+                # Parse email date
+                try:
+                    from email.utils import parsedate_to_datetime
+                    email_datetime = parsedate_to_datetime(email_date) if email_date else None
+                except:
+                    email_datetime = None
+                
+                # Record the activity
+                activity = {
+                    "date": email_datetime.isoformat() if email_datetime else email_date,
+                    "type": "sent" if is_sent else "received",
+                    "subject": email.get('subject'),
+                    "snippet": email.get('snippet'),
+                    "from": email.get('from'),
+                    "to": email.get('to'),
+                    "id": email.get('id')
+                }
+                
+                case_tracking = self.data['cases'][pv]
+                case_tracking['activities'].append(activity)
+                
+                if is_sent:
+                    case_tracking['sent_emails'].append(activity)
+                    case_tracking['sent_count'] += 1
                     
-                    # Parse email date
-                    try:
-                        from email.utils import parsedate_to_datetime
-                        email_datetime = parsedate_to_datetime(email_date) if email_date else None
-                    except:
-                        email_datetime = None
-                    
-                    # Record the activity
-                    activity = {
-                        "date": email_datetime.isoformat() if email_datetime else email_date,
-                        "type": "sent" if is_sent else "received",
-                        "subject": email.get('subject'),
-                        "snippet": email.get('snippet'),
-                        "from": email.get('from'),
-                        "to": email.get('to'),
-                        "id": email.get('id')
-                    }
-                    
-                    case_tracking = self.data['cases'][pv]
-                    case_tracking['activities'].append(activity)
-                    
-                    if is_sent:
-                        case_tracking['sent_emails'].append(activity)
-                        case_tracking['sent_count'] += 1
-                        
-                        # Update last sent date
-                        if email_datetime:
-                            if not case_tracking['last_sent'] or email_datetime > datetime.fromisoformat(case_tracking['last_sent']):
-                                case_tracking['last_sent'] = email_datetime.isoformat()
-                    else:
-                        case_tracking['received_emails'].append(activity)
-                        case_tracking['response_count'] += 1
-                        
-                        # Update last received date
-                        if email_datetime:
-                            if not case_tracking['last_received'] or email_datetime > datetime.fromisoformat(case_tracking['last_received']):
-                                case_tracking['last_received'] = email_datetime.isoformat()
-                    
-                    # Update last contact (most recent of sent or received)
+                    # Update last sent date
                     if email_datetime:
-                        if not case_tracking['last_contact'] or email_datetime > datetime.fromisoformat(case_tracking['last_contact']):
-                            case_tracking['last_contact'] = email_datetime.isoformat()
+                        if not case_tracking['last_sent'] or email_datetime > datetime.fromisoformat(case_tracking['last_sent']):
+                            case_tracking['last_sent'] = email_datetime.isoformat()
+                else:
+                    case_tracking['received_emails'].append(activity)
+                    case_tracking['response_count'] += 1
+                    
+                    # Update last received date
+                    if email_datetime:
+                        if not case_tracking['last_received'] or email_datetime > datetime.fromisoformat(case_tracking['last_received']):
+                            case_tracking['last_received'] = email_datetime.isoformat()
+                
+                # Update last contact (most recent of sent or received)
+                if email_datetime:
+                    if not case_tracking['last_contact'] or email_datetime > datetime.fromisoformat(case_tracking['last_contact']):
+                        case_tracking['last_contact'] = email_datetime.isoformat()
         
         # Save results
         self.data['last_analysis'] = datetime.now().isoformat()
@@ -261,6 +304,9 @@ class EnhancedCollectionsTracker:
         now = datetime.now()
         
         for pv, case_data in self.data['cases'].items():
+            # Skip if case_info is empty (case not in spreadsheet)
+            if not case_data.get('case_info') or not case_data['case_info'].get('name'):
+                continue
             # Calculate days since last contact
             days_since = None
             if case_data['last_contact']:
@@ -321,3 +367,68 @@ class EnhancedCollectionsTracker:
             },
             "activities": activities
         }
+    
+    def get_comprehensive_stale_cases(self, case_manager, progress_callback=None):
+        """Get comprehensive stale case analysis with categories"""
+        if progress_callback:
+            progress_callback("Loading bootstrap data...", 10)
+        
+        # Reload tracking data from disk to get latest analysis results
+        self.data = self._load_tracking_data()
+        
+        # Get all stale cases categorized
+        stale_categories = self.get_stale_cases()
+        
+        if progress_callback:
+            progress_callback("Processing case categories...", 50)
+        
+        # Add balance information from case manager
+        for category, cases in stale_categories.items():
+            for case in cases:
+                # Get case details from case manager
+                try:
+                    # Use column index 1 for PV (second column)
+                    case_df = case_manager.df[case_manager.df[1].astype(str) == str(case['pv'])]
+                    
+                    if not case_df.empty:
+                        case_row = case_df.iloc[0]
+                        # Column 27 is Balance (AB column)
+                        balance_raw = case_row[27] if len(case_row) > 27 else 0
+                        if balance_raw:
+                            try:
+                                balance_str = str(balance_raw).replace('$', '').replace(',', '').strip()
+                                if balance_str and balance_str != 'nan' and balance_str != '':
+                                    case['balance'] = float(balance_str)
+                                else:
+                                    case['balance'] = 0
+                            except (ValueError, TypeError):
+                                case['balance'] = 0
+                        else:
+                            case['balance'] = 0
+                        
+                        # Column 2 is Case Status
+                        case['status'] = case_row[2] if len(case_row) > 2 else 'Unknown'
+                except Exception as e:
+                    logger.warning(f"Error getting case details for PV {case.get('pv', 'unknown')}: {e}")
+                    case['balance'] = 0
+                    case['status'] = 'Unknown'
+        
+        if progress_callback:
+            progress_callback("Analysis complete", 100)
+        
+        # Log summary
+        total_critical = len(stale_categories.get('critical', []))
+        total_high = len(stale_categories.get('high_priority', []))
+        total_followup = len(stale_categories.get('needs_follow_up', []))
+        total_never = len(stale_categories.get('never_contacted', []))
+        total_no_response = len(stale_categories.get('no_response', []))
+        
+        logger.info(f"Stale case analysis complete - Critical: {total_critical}, High: {total_high}, Follow-up: {total_followup}, Never contacted: {total_never}, No response: {total_no_response}")
+        
+        return stale_categories
+    
+    def clear_stale_cache(self):
+        """Clear any cached stale case data to force refresh"""
+        # Since we don't have a separate cache, just log
+        logger.info("Stale cache cleared (will refresh on next analysis)")
+        pass
