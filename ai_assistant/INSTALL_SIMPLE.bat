@@ -143,8 +143,8 @@ python -m pip install PyQt5 --quiet --no-warn-script-location
 echo [7/8] Installing Web Browser...
 python -m pip install playwright --quiet --no-warn-script-location
 
-echo [8/8] Installing Additional Components...
-python -m pip install python-dotenv pytz requests --quiet --no-warn-script-location
+echo [8/8] Installing Security and Additional Components...
+python -m pip install cryptography python-dotenv pytz requests email-validator --quiet --no-warn-script-location
 
 echo.
 echo =====================================

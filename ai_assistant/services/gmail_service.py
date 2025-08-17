@@ -1,4 +1,5 @@
 import os
+import sys
 import base64
 from email.mime.text import MIMEText
 from base64 import urlsafe_b64encode
@@ -10,6 +11,10 @@ import json
 import logging
 from config import Config
 
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from utils.seamless_gmail_auth import authenticate_gmail
+
 logger = logging.getLogger(__name__)
 
 class GmailService:
@@ -20,34 +25,38 @@ class GmailService:
         self._authenticate()
     
     def _authenticate(self):
-        """Authenticate with Gmail API using OAuth2"""
-        creds = None
+        """Authenticate with Gmail API using seamless OAuth2"""
+        # Look for credentials and token in the ai_assistant directory
+        base_dir = os.path.dirname(os.path.dirname(__file__))
+        token_path = os.path.join(base_dir, "token.json")
+        credentials_path = os.path.join(base_dir, "credentials.json")
         
-        # Look for token.json in the ai_assistant directory
-        token_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "token.json")
-        
-        if os.path.exists(token_path):
-            creds = Credentials.from_authorized_user_file(token_path, Config.GMAIL_SCOPES)
-        
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                try:
-                    creds.refresh(Request())
-                    logger.info("Successfully refreshed Gmail credentials")
-                    # Save refreshed token
-                    with open(token_path, "w") as token:
-                        token.write(creds.to_json())
-                except Exception as e:
-                    logger.error(f"Failed to refresh credentials: {e}")
-                    raise Exception("Failed to refresh Gmail token. Please re-authenticate.")
-            else:
-                raise Exception(
-                    "No valid Gmail token found. Please run the authentication setup first.\n"
-                    "Make sure you have credentials.json in your project directory."
-                )
-        
-        self.service = build("gmail", "v1", credentials=creds)
-        logger.info("Gmail service authenticated successfully")
+        try:
+            # Use seamless authentication
+            creds = authenticate_gmail(
+                credentials_file=credentials_path,
+                token_file=token_path,
+                scopes=Config.GMAIL_SCOPES
+            )
+            
+            self.service = build("gmail", "v1", credentials=creds)
+            logger.info("Gmail service authenticated successfully")
+            
+        except FileNotFoundError as e:
+            logger.error(f"Credentials file not found: {e}")
+            raise Exception(
+                "Gmail credentials.json not found in ai_assistant directory.\n"
+                "Please ensure credentials.json is present before running."
+            )
+        except TimeoutError as e:
+            logger.error(f"Authentication timeout: {e}")
+            raise Exception(
+                "Gmail authentication timed out.\n"
+                "Please try again and make sure to click 'Allow' in your browser."
+            )
+        except Exception as e:
+            logger.error(f"Authentication failed: {e}")
+            raise Exception(f"Failed to authenticate with Gmail: {e}")
     
     def search_messages(self, query, max_results=None, progress=None):
         """

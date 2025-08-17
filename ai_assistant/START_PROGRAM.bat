@@ -26,6 +26,20 @@ if %errorlevel% neq 0 (
     exit
 )
 
+:: Check for critical dependencies before starting
+python -c "import cryptography" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [WARNING] Missing required package: cryptography
+    echo Installing missing packages...
+    python -m pip install cryptography
+    if %errorlevel% neq 0 (
+        echo [ERROR] Failed to install cryptography
+        echo Please run INSTALL_COMPLETE.bat as administrator
+        pause
+        exit /b 1
+    )
+)
+
 :: Try to run the program
 echo Starting program...
 echo.
