@@ -105,7 +105,9 @@ class EnhancedCollectionsTracker:
                 "last_received": None,
                 "response_count": 0,
                 "sent_count": 0,
-                "activities": []
+                "activities": [],
+                "ccp_335_1_eligible": False,  # Track CCP 335.1 eligibility
+                "has_litigation_keywords": False  # Track if we've received litigation keywords
             }
         
         # Process each cached email
@@ -239,6 +241,26 @@ class EnhancedCollectionsTracker:
                     case_tracking['received_emails'].append(activity)
                     case_tracking['response_count'] += 1
                     
+                    # Check for litigation keywords in received emails
+                    if not case_tracking['has_litigation_keywords']:
+                        litigation_keywords = [
+                            'litigation', 'lawsuit', 'filed', 'case number', 'venue',
+                            'settled', 'settlement', 'resolved', 'dismissed', 'pending',
+                            'court', 'trial', 'verdict', 'judgment', 'complaint',
+                            'docket', 'superior court', 'federal court', 'arbitration',
+                            'pre-litigation', 'prelitigation', 'prelit', 'pre litigation',
+                            'pre-lit', 'in litigation', 'litigating', 'litigated', 'case settled',
+                            'matter settled', 'pending litigation', 'pending settlement'
+                        ]
+                        
+                        email_content = f"{email.get('subject', '')} {email.get('body', '')} {email.get('snippet', '')}".lower()
+                        
+                        for keyword in litigation_keywords:
+                            if keyword in email_content:
+                                case_tracking['has_litigation_keywords'] = True
+                                logger.debug(f"Case {pv} has litigation keyword: {keyword}")
+                                break
+                    
                     # Update last received date
                     if email_datetime:
                         if not case_tracking['last_received'] or email_datetime > datetime.fromisoformat(case_tracking['last_received']):
@@ -249,11 +271,45 @@ class EnhancedCollectionsTracker:
                     if not case_tracking['last_contact'] or email_datetime > datetime.fromisoformat(case_tracking['last_contact']):
                         case_tracking['last_contact'] = email_datetime.isoformat()
         
+        # After processing all emails, check CCP 335.1 eligibility for each case
+        logger.info("Checking CCP 335.1 eligibility for all cases...")
+        ccp_335_1_count = 0
+        
+        for pv, case_tracking in self.data['cases'].items():
+            case_info = case_tracking['case_info']
+            doi_raw = case_info.get('doi')
+            
+            # Check if DOI is over 2 years old and we haven't received litigation keywords
+            if doi_raw and str(doi_raw) not in ['nan', 'NaT', '2099', 'UNKNOWN', '', 'None']:
+                try:
+                    import pandas as pd
+                    
+                    # Convert DOI to datetime
+                    if hasattr(doi_raw, 'year'):
+                        doi_date = doi_raw
+                    else:
+                        doi_str = str(doi_raw).split()[0]
+                        doi_date = pd.to_datetime(doi_str, errors='coerce')
+                        if pd.isna(doi_date):
+                            continue
+                    
+                    # Check if over 2 years old
+                    years_old = (datetime.now() - doi_date).days / 365
+                    if years_old > 2 and not case_tracking['has_litigation_keywords']:
+                        case_tracking['ccp_335_1_eligible'] = True
+                        ccp_335_1_count += 1
+                        logger.info(f"Case {pv} marked as CCP 335.1 eligible - DOI: {doi_str}, {years_old:.1f} years old, no litigation keywords")
+                    
+                except Exception as e:
+                    logger.debug(f"Error checking CCP 335.1 eligibility for {pv}: {e}")
+        
+        logger.info(f"CCP 335.1 eligibility check complete: {ccp_335_1_count} eligible cases found")
+        
         # Save results
         self.data['last_analysis'] = datetime.now().isoformat()
         self._save_tracking_data()
         
-        logger.info(f"Analysis complete: {emails_processed} emails processed, {matches_found} matches found")
+        logger.info(f"Analysis complete: {emails_processed} emails processed, {matches_found} matches found, {ccp_335_1_count} CCP 335.1 eligible")
         
         # Generate summary
         self._print_analysis_summary()
@@ -267,6 +323,7 @@ class EnhancedCollectionsTracker:
         cases_with_responses = 0
         no_response_cases = 0
         never_contacted = 0
+        ccp_335_1_eligible = 0
         
         for pv, case_data in self.data['cases'].items():
             if case_data['sent_count'] > 0 or case_data['response_count'] > 0:
@@ -280,6 +337,9 @@ class EnhancedCollectionsTracker:
             
             if case_data['sent_count'] == 0 and case_data['response_count'] == 0:
                 never_contacted += 1
+            
+            if case_data.get('ccp_335_1_eligible', False):
+                ccp_335_1_eligible += 1
         
         print("\n" + "="*60)
         print("📊 COLLECTIONS ANALYSIS SUMMARY")
@@ -289,6 +349,7 @@ class EnhancedCollectionsTracker:
         print(f"Cases with responses: {cases_with_responses}")
         print(f"NO RESPONSE cases (sent but no reply): {no_response_cases}")
         print(f"Never contacted: {never_contacted}")
+        print(f"CCP 335.1 eligible (>2yr, no litigation): {ccp_335_1_eligible}")
         print("="*60)
     
     def get_stale_cases(self, days_threshold=30):
@@ -378,34 +439,17 @@ class EnhancedCollectionsTracker:
                     # No date info, put in recently_sent as it might be new
                     stale_cases['recently_sent'].append(case_summary)
             
-            # Check for CCP 335.1 eligibility (cases over 2 years old)
-            # Only check if DOI is available and valid
-            if doi_str and '2099' not in doi_str:
-                try:
-                    # Import the CCP 335.1 eligibility checker
-                    from templates.ccp_335_1_template import is_ccp_335_1_eligible
-                    
-                    # Prepare case data for CCP check
-                    ccp_case_data = {
-                        'pv': pv,
-                        'doi': doi_value,
-                        'attorney_email': case_data['case_info'].get('attorney_email', '')
-                    }
-                    
-                    # Check eligibility (this will check DOI age and litigation status)
-                    # Pass the email cache service to check for litigation keywords
-                    if is_ccp_335_1_eligible(ccp_case_data, self.email_cache):
-                        # Don't add if already in another category
-                        already_categorized = any(
-                            any(c['pv'] == pv for c in cases)
-                            for cat, cases in stale_cases.items()
-                            if cat != 'ccp_335_1'
-                        )
-                        if not already_categorized:
-                            stale_cases['ccp_335_1'].append(case_summary)
-                            logger.info(f"Case {pv} added to CCP 335.1 category - DOI: {doi_str}")
-                except Exception as e:
-                    logger.warning(f"Error checking CCP 335.1 eligibility for {pv}: {e}")
+            # Check for CCP 335.1 eligibility (use cached result from analyze_from_cache)
+            if case_data.get('ccp_335_1_eligible', False):
+                # Don't add if already in another category
+                already_categorized = any(
+                    any(c['pv'] == pv for c in cases)
+                    for cat, cases in stale_cases.items()
+                    if cat != 'ccp_335_1'
+                )
+                if not already_categorized:
+                    stale_cases['ccp_335_1'].append(case_summary)
+                    logger.debug(f"Case {pv} added to CCP 335.1 category from cached analysis")
         
         return stale_cases
     
@@ -489,8 +533,9 @@ class EnhancedCollectionsTracker:
         total_followup = len(stale_categories.get('needs_follow_up', []))
         total_never = len(stale_categories.get('never_contacted', []))
         total_no_response = len(stale_categories.get('no_response', []))
+        total_ccp_335_1 = len(stale_categories.get('ccp_335_1', []))
         
-        logger.info(f"Stale case analysis complete - Critical: {total_critical}, High: {total_high}, Follow-up: {total_followup}, Never contacted: {total_never}, No response: {total_no_response}")
+        logger.info(f"Stale case analysis complete - Critical: {total_critical}, High: {total_high}, Follow-up: {total_followup}, Never contacted: {total_never}, No response: {total_no_response}, CCP 335.1: {total_ccp_335_1}")
         
         return stale_categories
     
