@@ -351,12 +351,16 @@ class StaleCaseWidget(QWidget):
         try:
             dashboard = self.collections_tracker.get_collections_dashboard()
             
+            # Get CCP 335.1 count from category data if available
+            ccp_335_1_count = len(self.category_data.get('ccp_335_1', [])) if hasattr(self, 'category_data') else 0
+            
             stats_text = f"""
             <b>📊 Collections Overview:</b><br>
             Total tracked cases: {dashboard['total_cases']}<br>
             Cases 30+ days old: {dashboard['stale_cases']['30_days']}<br>
             Cases 60+ days old: {dashboard['stale_cases']['60_days']}<br>
-            Cases 90+ days old: {dashboard['stale_cases']['90_days']}
+            Cases 90+ days old: {dashboard['stale_cases']['90_days']}<br>
+            CCP 335.1 eligible: {ccp_335_1_count}
             """
             
             self.stats_label.setText(stats_text)
@@ -378,7 +382,7 @@ class StaleCaseWidget(QWidget):
                     threshold = 0.0
             
             # Apply filter to each category
-            for category in ["critical", "high_priority", "no_response", "recently_sent", "never_contacted", "missing_doi"]:
+            for category in ["critical", "high_priority", "no_response", "recently_sent", "never_contacted", "missing_doi", "ccp_335_1"]:
                 cases = self.category_data.get(category, [])
                 
                 # Add balance information to each case
@@ -3616,7 +3620,28 @@ Case Aging:
         if self.bulk_email_tab:
             self.tabs.setCurrentWidget(self.bulk_email_tab)
             # Set the category in bulk email widget
-            # This would need implementation in BulkEmailWidget
+            if hasattr(self.bulk_email_tab, 'process_category'):
+                self.bulk_email_tab.process_category(category)
+            else:
+                # Fallback: Set the category and populate
+                self.bulk_email_tab.by_category_radio.setChecked(True)
+                
+                # Map category to display name
+                category_map = {
+                    "critical": "Critical (90+ days no response)",
+                    "high_priority": "High Priority (60+ days no response)",
+                    "no_response": "No Response (30+ days no response)",
+                    "recently_sent": "Recently Sent (<30 days)",
+                    "never_contacted": "Never Contacted",
+                    "missing_doi": "Missing DOI",
+                    "ccp_335_1": "CCP 335.1 (>2yr Statute Inquiry)"
+                }
+                
+                display_name = category_map.get(category, category)
+                index = self.bulk_email_tab.selection_combo.findText(display_name)
+                if index >= 0:
+                    self.bulk_email_tab.selection_combo.setCurrentIndex(index)
+                    self.bulk_email_tab.populate_batch()
     
     # Menu actions
     def open_cases_file(self):
