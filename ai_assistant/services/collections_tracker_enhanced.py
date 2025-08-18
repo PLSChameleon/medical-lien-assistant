@@ -295,27 +295,44 @@ class EnhancedCollectionsTracker:
         """Get cases that haven't been contacted recently"""
         stale_cases = {
             "critical": [],        # Sent email, no response for 90+ days
-            "high_priority": [],   # Sent email, no response for 60+ days
-            "needs_follow_up": [], # Sent email, no response for 30+ days
-            "no_response": [],     # Sent emails but no responses (under 30 days)
+            "high_priority": [],   # Sent email, no response for 60-89 days
+            "no_response": [],     # Sent email, no response for 30-59 days
+            "recently_sent": [],   # Sent email within last 30 days (new category)
             "never_contacted": [], # No activity at all
             "missing_doi": []      # Cases without DOI
         }
         
-        now = datetime.now()
+        import pytz
+        # Use timezone-aware datetime for proper comparison
+        now = datetime.now(pytz.UTC)
+        
+        # Import acknowledgment service to filter out acknowledged cases
+        from services.case_acknowledgment_service import CaseAcknowledgmentService
+        ack_service = CaseAcknowledgmentService()
         
         for pv, case_data in self.data['cases'].items():
             # Skip if case_info is empty (case not in spreadsheet)
             if not case_data.get('case_info') or not case_data['case_info'].get('name'):
                 continue
             
+            # SKIP ACKNOWLEDGED CASES - they should only appear in Acknowledged tab
+            if ack_service.is_acknowledged(str(pv)):
+                logger.debug(f"Skipping acknowledged case {pv} from stale analysis")
+                continue
+            
             # Calculate days since last SENT email (not last contact)
             days_since_sent = None
             if case_data['last_sent']:
                 try:
+                    from email.utils import parsedate_to_datetime
                     last_sent_date = datetime.fromisoformat(case_data['last_sent'])
+                    # Ensure last_sent_date is timezone-aware
+                    if last_sent_date.tzinfo is None:
+                        import pytz
+                        last_sent_date = pytz.UTC.localize(last_sent_date)
                     days_since_sent = (now - last_sent_date).days
-                except:
+                except Exception as e:
+                    logger.debug(f"Error calculating days for PV {pv}: {e}")
                     pass
             
             case_summary = {
@@ -331,8 +348,12 @@ class EnhancedCollectionsTracker:
                 "response_count": case_data['response_count']
             }
             
-            # Check for missing DOI
-            if not case_data['case_info'].get('doi'):
+            # Check for missing DOI - specifically look for 2099 placeholder dates
+            doi_value = case_data['case_info'].get('doi', '')
+            doi_str = str(doi_value).strip() if doi_value else ''
+            
+            # Only add to missing_doi if it contains '2099' (placeholder date)
+            if '2099' in doi_str:
                 stale_cases['missing_doi'].append(case_summary)
             
             # Categorize based on email activity
@@ -347,13 +368,14 @@ class EnhancedCollectionsTracker:
                     elif days_since_sent >= 60:
                         stale_cases['high_priority'].append(case_summary)
                     elif days_since_sent >= 30:
-                        stale_cases['needs_follow_up'].append(case_summary)
-                    else:
-                        # Sent recently, no response yet (under 30 days)
+                        # No response for 30-59 days
                         stale_cases['no_response'].append(case_summary)
+                    else:
+                        # Sent within last 30 days - new category
+                        stale_cases['recently_sent'].append(case_summary)
                 else:
-                    # No date info, put in no_response
-                    stale_cases['no_response'].append(case_summary)
+                    # No date info, put in recently_sent as it might be new
+                    stale_cases['recently_sent'].append(case_summary)
         
         return stale_cases
     
@@ -448,6 +470,48 @@ class EnhancedCollectionsTracker:
         logger.info("Stale cache cleared (will refresh on next analysis)")
         pass
     
+    def mark_case_as_contacted(self, pv, is_sent=False, is_response=False):
+        """Immediately update a case's contact status when email is sent or received
+        
+        Args:
+            pv: Case PV number
+            is_sent: True if we sent an email
+            is_response: True if we received a response
+        """
+        try:
+            pv = str(pv)
+            
+            # Make sure case exists in tracking data
+            if pv not in self.data['cases']:
+                logger.warning(f"Case {pv} not found in tracking data")
+                return False
+            
+            case_data = self.data['cases'][pv]
+            now = datetime.now().isoformat()
+            
+            if is_sent:
+                # Update sent tracking
+                case_data['last_sent'] = now
+                case_data['sent_count'] = case_data.get('sent_count', 0) + 1
+                case_data['last_contact'] = now
+                logger.info(f"Case {pv} marked as contacted (sent email) at {now}")
+            
+            if is_response:
+                # Update response tracking
+                case_data['last_response'] = now
+                case_data['response_count'] = case_data.get('response_count', 0) + 1
+                case_data['last_contact'] = now
+                logger.info(f"Case {pv} marked as contacted (received response) at {now}")
+            
+            # Save updated tracking data immediately
+            self._save_tracking_data()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error marking case {pv} as contacted: {e}")
+            return False
+    
     def get_stale_cases_by_category(self, case_manager, category, limit=100):
         """Get specific stale case category for bulk email processing"""
         stale_categories = self.get_comprehensive_stale_cases(case_manager)
@@ -462,4 +526,87 @@ class EnhancedCollectionsTracker:
             "total": len(cases),
             "category": category,
             "remaining": max(0, len(cases) - limit) if limit else 0
+        }
+    
+    def get_collections_dashboard(self):
+        """Get dashboard summary of collections status"""
+        total_cases = len(self.data.get("cases", {}))
+        
+        # Case status breakdown
+        status_counts = {}
+        stale_30_days = 0
+        stale_60_days = 0
+        stale_90_days = 0
+        
+        for case_pv, case_data in self.data.get("cases", {}).items():
+            # Get current status
+            status = case_data.get("current_status", "unknown")
+            if not status:
+                status = "unknown"
+            status_counts[status] = status_counts.get(status, 0) + 1
+            
+            # Check staleness based on last email sent
+            last_sent = case_data.get("last_email_sent")
+            if last_sent:
+                try:
+                    # Parse the date - it might be in different formats
+                    if isinstance(last_sent, str):
+                        # Try ISO format first
+                        try:
+                            last_sent_date = datetime.fromisoformat(last_sent.replace('Z', '+00:00'))
+                        except:
+                            # Try other common formats
+                            last_sent_date = datetime.strptime(last_sent[:10], "%Y-%m-%d")
+                    else:
+                        last_sent_date = last_sent
+                    
+                    days_since = (datetime.now() - last_sent_date).days
+                    
+                    if days_since >= 30:
+                        stale_30_days += 1
+                    if days_since >= 60:
+                        stale_60_days += 1
+                    if days_since >= 90:
+                        stale_90_days += 1
+                except Exception as e:
+                    logger.debug(f"Error parsing date for case {case_pv}: {e}")
+        
+        # Get firm statistics (top responsive firms)
+        firm_stats = {}
+        for case_pv, case_data in self.data.get("cases", {}).items():
+            firm = case_data.get("case_info", {}).get("law_firm", "Unknown")
+            if firm and firm != "Unknown":
+                if firm not in firm_stats:
+                    firm_stats[firm] = {
+                        "total_cases": 0,
+                        "responded_cases": 0,
+                        "total_emails": 0,
+                        "total_responses": 0
+                    }
+                
+                firm_stats[firm]["total_cases"] += 1
+                firm_stats[firm]["total_emails"] += case_data.get("total_emails_sent", 0)
+                firm_stats[firm]["total_responses"] += case_data.get("total_responses", 0)
+                
+                if case_data.get("total_responses", 0) > 0:
+                    firm_stats[firm]["responded_cases"] += 1
+        
+        # Calculate top responsive firms
+        top_firms = []
+        for firm, stats in firm_stats.items():
+            if stats["total_emails"] > 0:
+                response_rate = (stats["total_responses"] / stats["total_emails"]) * 100
+                top_firms.append((firm, response_rate))
+        
+        top_firms.sort(key=lambda x: x[1], reverse=True)
+        
+        return {
+            "total_cases": total_cases,
+            "status_breakdown": status_counts,
+            "stale_cases": {
+                "30_days": stale_30_days,
+                "60_days": stale_60_days,
+                "90_days": stale_90_days
+            },
+            "top_responsive_firms": top_firms[:5]
         }

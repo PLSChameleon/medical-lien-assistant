@@ -38,6 +38,53 @@ class EmailCacheService:
         except Exception as e:
             logger.error(f"Error saving email cache: {e}")
     
+    def add_sent_email_to_cache(self, message_id, recipient, subject, body_snippet="", thread_id=None):
+        """Immediately add a sent email to the cache without fetching from Gmail
+        
+        Args:
+            message_id: Gmail message ID of the sent email
+            recipient: Email recipient
+            subject: Email subject
+            body_snippet: First part of email body (optional)
+            thread_id: Gmail thread ID (optional)
+        """
+        try:
+            # Create email entry matching the cache structure
+            email_entry = {
+                "id": message_id,
+                "snippet": body_snippet[:200] if body_snippet else "",  # First 200 chars
+                "from": "me",  # Sent emails are from "me"
+                "to": recipient,
+                "subject": subject,
+                "date": datetime.now().strftime("%a, %d %b %Y %H:%M:%S %z"),
+                "thread_id": thread_id
+            }
+            
+            # Add to beginning of cache (most recent first)
+            if "emails" not in self.cache:
+                self.cache["emails"] = []
+            
+            # Check if this email ID already exists (avoid duplicates)
+            existing_ids = {email.get("id") for email in self.cache["emails"] if email.get("id")}
+            if message_id not in existing_ids:
+                self.cache["emails"].insert(0, email_entry)
+                logger.info(f"Added sent email to cache immediately: {message_id} to {recipient}")
+                
+                # Update cache metadata
+                self.cache["last_updated"] = datetime.now().isoformat()
+                
+                # Save cache to disk
+                self._save_cache()
+                
+                return True
+            else:
+                logger.debug(f"Email {message_id} already in cache")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error adding sent email to cache: {e}")
+            return False
+    
     def _load_cadence(self):
         """Load cadence analysis from file"""
         try:

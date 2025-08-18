@@ -293,6 +293,10 @@ class BulkEmailService:
         logger.info("Starting case categorization...")
         start_time = time.time()
         
+        # Import acknowledgment service to filter out acknowledged cases
+        from services.case_acknowledgment_service import CaseAcknowledgmentService
+        ack_service = CaseAcknowledgmentService()
+        
         try:
             df = self.case_manager.df
             total_cases = len(df)
@@ -342,6 +346,11 @@ class BulkEmailService:
                 if pv in self.sent_pids or pv in self.session_sent_pids:
                     continue
                 
+                # Skip acknowledged cases - they should only appear in Acknowledged tab
+                if ack_service.is_acknowledged(pv):
+                    logger.debug(f"Skipping acknowledged case {pv} from categorization")
+                    continue
+                
                 # Create case data object
                 case_data = {
                     "pv": pv,
@@ -367,12 +376,12 @@ class BulkEmailService:
                     # Still add to missing_doi but could be separated if needed
                     pass  # Don't add to missing_doi unless it's specifically 2099
                 
-                # Categorize by firm
-                firm_email = case_data["attorney_email"]
-                if firm_email and "@" in firm_email:
-                    if firm_email not in categories["by_firm"]:
-                        categories["by_firm"][firm_email] = []
-                    categories["by_firm"][firm_email].append(case_data)
+                # Categorize by firm NAME (not email)
+                firm_name = case_data["law_firm"]
+                if firm_name and firm_name.strip():
+                    if firm_name not in categories["by_firm"]:
+                        categories["by_firm"][firm_name] = []
+                    categories["by_firm"][firm_name].append(case_data)
                 
                 # Check for old cases (>2 years) and CCP 335.1 eligibility
                 if doi_raw and doi_str != "2099" and doi_str != "nan" and doi_str != "NaT":
@@ -552,15 +561,17 @@ Prohealth Advanced Imaging
                 self.categorize_cases(force_refresh=True, check_ccp_335_1=True)
             
             # Check if this is a stale case category
-            stale_categories = ["critical", "high_priority", "needs_follow_up", "no_response"]
+            stale_categories = ["critical", "high_priority", "no_response", "recently_sent", "never_contacted", "missing_doi"]
             
             if category in stale_categories:
                 # Get stale cases from collections tracker
                 if self.collections_tracker:
+                    logger.info(f"Getting {category} cases from collections tracker...")
                     stale_data = self.collections_tracker.get_stale_cases_by_category(
                         self.case_manager, category, limit=limit or 100
                     )
                     cases = stale_data.get("cases", [])
+                    logger.info(f"Found {len(cases)} cases in {category} category")
                     
                     # Convert stale case format to standard format and filter acknowledged
                     from services.case_acknowledgment_service import CaseAcknowledgmentService
@@ -770,6 +781,16 @@ Prohealth Advanced Imaging
                         
                         # Track in session
                         self.session_sent_pids.add(email['pv'])
+                        
+                        # Update collections tracker IMMEDIATELY
+                        if self.collections_tracker and hasattr(self.collections_tracker, 'mark_case_as_contacted'):
+                            try:
+                                pv = email['pv']
+                                # This updates last_sent date and moves case to appropriate category
+                                self.collections_tracker.mark_case_as_contacted(pv, is_sent=True, is_response=False)
+                                logger.info(f"Collections tracker updated immediately for PV {pv}")
+                            except Exception as e:
+                                logger.warning(f"Failed to update collections tracker for PV {pv}: {e}")
                         
                         # Add CMS note for production
                         if add_cms_notes:

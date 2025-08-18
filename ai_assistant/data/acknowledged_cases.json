@@ -1,0 +1,29 @@
+{
+  "120613": {
+    "acknowledged_date": "2025-08-16T23:18:32.676065",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Active",
+    "notes": "setn email using new program dont need to follow up for now ",
+    "snooze_days": 30,
+    "review_after": "2025-09-15T23:18:32.676075"
+  },
+  "315042": {
+    "acknowledged_date": "2025-08-16T23:49:01.911517",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Litigation",
+    "notes": "email sent while testring program ",
+    "snooze_days": 30,
+    "review_after": "2025-09-15T23:49:01.911526"
+  },
+  "386134": {
+    "acknowledged_date": "2025-08-18T14:05:07.418756",
+    "acknowledged_by": "user",
+    "reason": "LITIGATION - Awaiting outcome",
+    "status": "Active",
+    "notes": "firm saud case is in litigation waiting to serttle ",
+    "snooze_days": 180,
+    "review_after": "2026-02-14T14:05:07.418768"
+  }
+}

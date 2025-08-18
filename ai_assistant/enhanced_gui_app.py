@@ -14,9 +14,10 @@ from pathlib import Path
 import pytz
 import shutil
 from PyQt5.QtWidgets import *
-from PyQt5.QtWidgets import QFileDialog
+from PyQt5.QtWidgets import QFileDialog, QInputDialog
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
+from PyQt5.QtGui import QColor
 from PyQt5.QtCore import QTimer, QThread
 
 # Add project root to Python path
@@ -48,6 +49,9 @@ except ImportError:
     add_cms_note_for_email = None
     process_session_cms_notes = None
     get_session_stats = None
+
+# Setup logger
+logger = logging.getLogger(__name__)
 from case_manager import CaseManager
 try:
     from services.collections_tracker_enhanced import EnhancedCollectionsTracker
@@ -132,17 +136,17 @@ class StaleCaseWidget(QWidget):
         self.high_priority_widget = self.create_category_widget("high_priority", "🔥 High Priority (60+ days no response)")
         self.category_tabs.addTab(self.high_priority_widget, "High Priority")
         
-        # Needs follow-up tab (30+ days no response)
-        self.needs_followup_widget = self.create_category_widget("needs_follow_up", "📋 Needs Follow-up (30+ days no response)")
-        self.category_tabs.addTab(self.needs_followup_widget, "Needs Follow-up")
+        # No response tab (30+ days no response)
+        self.no_response_widget = self.create_category_widget("no_response", "📋 No Response (30+ days)")
+        self.category_tabs.addTab(self.no_response_widget, "No Response")
         
         # Never contacted tab
         self.never_contacted_widget = self.create_category_widget("never_contacted", "📝 Never Contacted")
         self.category_tabs.addTab(self.never_contacted_widget, "Never Contacted")
         
-        # No response tab (under 30 days)
-        self.no_response_widget = self.create_category_widget("no_response", "📧 No Response (<30 days)")
-        self.category_tabs.addTab(self.no_response_widget, "No Response")
+        # Recently Sent tab (sent within last 30 days)
+        self.recently_sent_widget = self.create_category_widget("recently_sent", "📧 Recently Sent (<30 days)")
+        self.category_tabs.addTab(self.recently_sent_widget, "Recently Sent")
         
         # Missing DOI tab
         self.missing_doi_widget = self.create_category_widget("missing_doi", "❓ Missing DOI")
@@ -365,7 +369,7 @@ class StaleCaseWidget(QWidget):
                     threshold = 0.0
             
             # Apply filter to each category
-            for category in ["critical", "high_priority", "needs_follow_up", "never_contacted", "no_response", "missing_doi"]:
+            for category in ["critical", "high_priority", "no_response", "recently_sent", "never_contacted", "missing_doi"]:
                 cases = self.category_data.get(category, [])
                 
                 # Add balance information to each case
@@ -851,6 +855,11 @@ class BulkEmailWidget(QWidget):
                 progress.log("🗑️ Clearing category cache")
                 self.bulk_service.force_recategorization()
                 
+                # Also refresh the collections tracker data if it's enhanced
+                if hasattr(self.bulk_service.collections_tracker, '_load_tracking_data'):
+                    progress.log("🔄 Refreshing collections tracker data")
+                    self.bulk_service.collections_tracker.data = self.bulk_service.collections_tracker._load_tracking_data()
+                
                 # Run fresh categorization with enhanced progress
                 progress.log("📂 Starting case categorization")
                 self.bulk_service.categorize_cases(
@@ -895,9 +904,9 @@ class BulkEmailWidget(QWidget):
                 # Stale case categories
                 "Critical (90+ days no response)",
                 "High Priority (60+ days no response)",
-                "Needs Follow-up (30+ days no response)",
+                "No Response (30+ days no response)",
+                "Recently Sent (<30 days)",
                 "Never Contacted",
-                "No Response (<30 days)",
                 "Missing DOI",
                 "CCP 335.1 (>2yr Statute Inquiry)"
             ])
@@ -911,7 +920,7 @@ class BulkEmailWidget(QWidget):
             self.selection_combo.addItems([
                 "Critical (90+ days no response)",
                 "High Priority (60+ days no response)",
-                "Needs Follow-up (30+ days no response)"
+                "No Response (30+ days no response)"
             ])
         elif self.by_balance_radio.isChecked():
             self.selection_combo.addItems([
@@ -945,10 +954,21 @@ class BulkEmailWidget(QWidget):
             self.test_mode_info.setText(
                 f"<b style='color: orange'>⚠️ TEST MODE ACTIVE - Emails will go to: {self.bulk_service.test_email}</b>"
             )
+            self.test_mode_info.setStyleSheet("background-color: yellow; padding: 5px; border: 2px solid red;")
         else:
             self.test_mode_info.setText(
                 "<b style='color: green'>✅ PRODUCTION MODE - Emails will go to actual recipients</b>"
             )
+            self.test_mode_info.setStyleSheet("background-color: lightgreen; padding: 5px; border: 1px solid green;")
+    
+    def update_test_mode_display(self):
+        """Update test mode display when toggled from main window"""
+        self.test_mode_check.setChecked(self.bulk_service.test_mode)
+        self.update_test_mode_info()
+        
+        # Update preview if there are emails loaded
+        if hasattr(self, 'current_batch') and self.current_batch:
+            self.preview_batch()
     
     def populate_batch(self):
         """Populate the batch based on selected criteria"""
@@ -989,8 +1009,14 @@ class BulkEmailWidget(QWidget):
                 # Law Firm
                 self.preview_table.setItem(row, 3, QTableWidgetItem(str(email.get('law_firm', ''))))
                 
-                # Email
-                self.preview_table.setItem(row, 4, QTableWidgetItem(str(email.get('to', ''))))
+                # Email - show TEST MODE clearly
+                email_to = str(email.get('to', ''))
+                email_item = QTableWidgetItem(email_to)
+                if self.bulk_service.test_mode:
+                    email_item.setBackground(QColor(255, 255, 0))  # Yellow background
+                    email_item.setForeground(QColor(255, 0, 0))  # Red text
+                    email_item.setToolTip(f"TEST MODE: Actually sending to {email_to}\nOriginal: {email.get('original_to', 'N/A')}")
+                self.preview_table.setItem(row, 4, email_item)
                 
                 # Status
                 status = email.get('case_data', {}).get('status', '') if 'case_data' in email else ''
@@ -1121,9 +1147,9 @@ class BulkEmailWidget(QWidget):
                 category_map = {
                     "Critical (90+ days no response)": "critical",
                     "High Priority (60+ days no response)": "high_priority",
-                    "Needs Follow-up (30+ days no response)": "needs_follow_up",
+                    "No Response (30+ days no response)": "no_response",
+                    "Recently Sent (<30 days)": "recently_sent",
                     "Never Contacted": "never_contacted",
-                    "No Response (<30 days)": "no_response",
                     "Missing DOI": "missing_doi",
                     "CCP 335.1 (>2yr Statute Inquiry)": "ccp_335_1"
                 }
@@ -1139,7 +1165,7 @@ class BulkEmailWidget(QWidget):
                 priority_map = {
                     "Critical (90+ days no response)": "critical",
                     "High Priority (60+ days no response)": "high_priority",
-                    "Needs Follow-up (30+ days no response)": "needs_follow_up"
+                    "No Response (30+ days no response)": "no_response"
                 }
                 priority = priority_map.get(self.selection_combo.currentText())
                 return self.bulk_service.prepare_batch(priority, limit=limit)
@@ -1272,8 +1298,13 @@ class BulkEmailWidget(QWidget):
                 self.send_btn.setEnabled(False)
                 self.preview_btn.setEnabled(False)
                 
-                # Update statistics
+                # Update statistics and CMS card
                 self.update_statistics()
+                
+                # Update the CMS card to reflect new pending notes
+                if hasattr(self.parent_window, 'update_cms_card'):
+                    self.parent_window.update_cms_card()
+                    self.parent_window.log_activity(f"Added {len(results['sent'])} emails to CMS notes queue")
                 
         except Exception as e:
             QApplication.restoreOverrideCursor()
@@ -1915,7 +1946,6 @@ class EnhancedMainWindow(QMainWindow):
             # Initialize error tracking if available
             if ERROR_TRACKING_AVAILABLE:
                 self.error_tracker = initialize_error_tracker(user_email)
-                self.log_activity(f"Error tracking initialized for: {user_email}")
             else:
                 self.error_tracker = None
             
@@ -1923,30 +1953,43 @@ class EnhancedMainWindow(QMainWindow):
             self.user_spreadsheet_path = self.load_user_spreadsheet_path()
             if self.user_spreadsheet_path and os.path.exists(self.user_spreadsheet_path):
                 self.case_manager = CaseManager(self.user_spreadsheet_path)
-                self.log_activity(f"Loaded user spreadsheet: {os.path.basename(self.user_spreadsheet_path)}")
             else:
                 self.case_manager = CaseManager()
-                self.log_activity("Using default spreadsheet")
             
             # Initialize other services
+            # Create email cache service and link it to Gmail service for auto-caching
             self.email_cache_service = EmailCacheService(self.gmail_service) if self.gmail_service else None
-            self.collections_tracker = CollectionsTracker()
+            if self.gmail_service and self.email_cache_service:
+                # Link the cache service to Gmail for auto-caching sent emails
+                self.gmail_service.email_cache_service = self.email_cache_service
+                logger.info("Email auto-caching enabled for sent emails")
             
-            # Initialize enhanced tracker if available
+            # Initialize enhanced tracker (used by both stale cases and bulk email)
             self.enhanced_tracker = None
+            self.collections_tracker = None
             if EnhancedCollectionsTracker and self.email_cache_service:
                 try:
                     self.enhanced_tracker = EnhancedCollectionsTracker(self.email_cache_service)
+                    # Use enhanced tracker as the main collections tracker
+                    self.collections_tracker = self.enhanced_tracker
+                    logger.info("Using EnhancedCollectionsTracker for all services")
                 except Exception as e:
                     print(f"Could not initialize enhanced tracker: {e}")
+                    # Fall back to basic tracker
+                    self.collections_tracker = CollectionsTracker()
+                    logger.info("Falling back to basic CollectionsTracker")
+            else:
+                # Fall back to basic tracker if enhanced not available
+                self.collections_tracker = CollectionsTracker()
+                logger.info("Using basic CollectionsTracker (enhanced not available)")
             
-            # Initialize bulk email service
+            # Initialize bulk email service with the appropriate tracker
             if self.gmail_service:
                 self.bulk_email_service = BulkEmailService(
                     self.gmail_service, 
                     self.case_manager, 
                     self.ai_service, 
-                    self.collections_tracker,
+                    self.collections_tracker,  # This will now be the enhanced tracker
                     self.email_cache_service
                 )
             else:
@@ -2023,12 +2066,6 @@ class EnhancedMainWindow(QMainWindow):
         
         # Create dock widgets
         self.create_dock_widgets()
-        
-        # Now that all widgets are created, load the cases
-        try:
-            self.load_all_cases()
-        except Exception as e:
-            print(f"Error loading cases after UI init: {e}")
     
     def create_menu_bar(self):
         """Create application menu bar"""
@@ -2141,6 +2178,19 @@ class EnhancedMainWindow(QMainWindow):
         cms_notes_action.setToolTip("Process pending CMS session notes")
         cms_notes_action.triggered.connect(self.process_cms_session_notes)
         toolbar.addAction(cms_notes_action)
+        toolbar.addSeparator()
+        
+        # Add TEST MODE toggle to toolbar
+        self.test_mode_action = QAction("🧪 TEST MODE", self)
+        self.test_mode_action.setCheckable(True)
+        self.test_mode_action.setToolTip("Toggle TEST MODE - All emails will be sent to test address")
+        self.test_mode_action.triggered.connect(self.toggle_test_mode)
+        toolbar.addAction(self.test_mode_action)
+        
+        # Add test mode indicator label
+        self.test_mode_indicator = QLabel("")
+        self.test_mode_indicator.setStyleSheet("color: red; font-weight: bold; padding: 0 10px;")
+        toolbar.addWidget(self.test_mode_indicator)
         toolbar.addSeparator()
         
         # Add dark mode toggle to toolbar
@@ -2288,26 +2338,47 @@ class EnhancedMainWindow(QMainWindow):
         title_label.setStyleSheet("font-weight: bold;")
         layout.addWidget(title_label)
         
-        # Get pending count
+        # Get stats
         try:
             if CMS_AVAILABLE and get_session_stats:
                 cms_stats = get_session_stats()
                 pending_count = cms_stats.get('pending_count', 0)
+                processed_count = cms_stats.get('processed_count', 0)
+                total_notes = cms_stats.get('notes_added_count', 0)
                 status_color = "red" if pending_count > 0 else "green"
             else:
                 pending_count = "N/A"
+                processed_count = 0
+                total_notes = 0
                 status_color = "gray"
         except:
             pending_count = "N/A"
+            processed_count = 0
+            total_notes = 0
             status_color = "gray"
         
-        # Value with color coding
-        self.cms_count_label = QLabel(str(pending_count))
-        if pending_count != "N/A" and pending_count > 0:
-            self.cms_count_label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {status_color};")
+        # Display pending/processed counts
+        self.cms_count_label = QLabel()
+        if pending_count != "N/A":
+            if pending_count > 0:
+                self.cms_count_label.setText(f"{pending_count} pending")
+                self.cms_count_label.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {status_color};")
+            else:
+                self.cms_count_label.setText("All processed")
+                self.cms_count_label.setStyleSheet(f"font-size: 18px; font-weight: bold; color: green;")
+            
+            # Add total notes info if available
+            if total_notes > 0:
+                info_label = QLabel(f"({total_notes} total added)")
+                info_label.setStyleSheet("font-size: 12px; color: gray;")
+                layout.addWidget(self.cms_count_label)
+                layout.addWidget(info_label)
+            else:
+                layout.addWidget(self.cms_count_label)
         else:
-            self.cms_count_label.setStyleSheet(f"font-size: 24px; font-weight: bold;")
-        layout.addWidget(self.cms_count_label)
+            self.cms_count_label.setText("N/A")
+            self.cms_count_label.setStyleSheet(f"font-size: 18px; font-weight: bold; color: gray;")
+            layout.addWidget(self.cms_count_label)
         
         # Process button
         if CMS_AVAILABLE:
@@ -2351,10 +2422,12 @@ class EnhancedMainWindow(QMainWindow):
         self.case_table.setSortingEnabled(True)
         
         # Load cases on startup (wrapped in try-except for initialization safety)
-        try:
-            self.load_all_cases()
-        except Exception as e:
-            print(f"Initial case load deferred: {e}")
+        # Defer loading to after UI is shown to prevent blocking
+        # try:
+        #     self.load_all_cases()
+        # except Exception as e:
+        #     print(f"Initial case load deferred: {e}")
+        QTimer.singleShot(100, self.load_all_cases)  # Load after UI is shown
         
         layout.addLayout(search_layout)
         layout.addWidget(self.case_table)
@@ -2456,8 +2529,9 @@ class EnhancedMainWindow(QMainWindow):
         
         widget.setLayout(layout)
         
-        # Load initial data
-        self.refresh_collections_dashboard()
+        # Load initial data - defer to prevent blocking
+        # self.refresh_collections_dashboard()
+        QTimer.singleShot(500, self.refresh_collections_dashboard)
         
         return widget
     
@@ -2539,6 +2613,76 @@ class EnhancedMainWindow(QMainWindow):
         self.apply_theme()
         self.dark_mode_action.setChecked(self.dark_mode)
         self.dark_mode_btn.setChecked(self.dark_mode)
+    
+    def toggle_test_mode(self):
+        """Toggle test mode for bulk emails"""
+        if not hasattr(self, 'bulk_email_service') or not self.bulk_email_service:
+            QMessageBox.warning(self, "Not Available", "Bulk email service is not initialized.")
+            self.test_mode_action.setChecked(False)
+            return
+        
+        if self.test_mode_action.isChecked():
+            # Enable test mode - ask for test email
+            test_email, ok = QInputDialog.getText(
+                self, "Enable TEST MODE",
+                "Enter test email address where ALL emails will be sent:",
+                text="deanh.transcon@gmail.com"
+            )
+            
+            if ok and test_email:
+                self.bulk_email_service.set_test_mode(True, test_email)
+                self.test_mode_indicator.setText(f"🧪 TEST MODE: {test_email}")
+                self.test_mode_indicator.setStyleSheet("color: red; font-weight: bold; padding: 0 10px; background-color: yellow;")
+                
+                # Update the title bar to show TEST MODE
+                self.update_window_title()
+                
+                # Show warning message
+                QMessageBox.information(
+                    self, "TEST MODE ENABLED",
+                    f"TEST MODE is now ACTIVE!\n\n"
+                    f"• ALL emails will be sent to: {test_email}\n"
+                    f"• Email subjects will include [TEST MODE]\n"
+                    f"• CMS notes will be prefixed with (TEST)\n\n"
+                    f"Remember to disable TEST MODE when done testing!"
+                )
+                
+                self.log_activity(f"TEST MODE ENABLED - Emails will go to: {test_email}")
+                
+                # Update bulk email tab if it exists
+                if hasattr(self, 'bulk_email_tab'):
+                    self.bulk_email_tab.update_test_mode_display()
+            else:
+                # User cancelled
+                self.test_mode_action.setChecked(False)
+        else:
+            # Disable test mode
+            self.bulk_email_service.set_test_mode(False)
+            self.test_mode_indicator.setText("")
+            self.test_mode_indicator.setStyleSheet("")
+            
+            # Update the title bar
+            self.update_window_title()
+            
+            QMessageBox.information(
+                self, "TEST MODE DISABLED",
+                "TEST MODE has been disabled.\n"
+                "Emails will now be sent to actual recipients."
+            )
+            
+            self.log_activity("TEST MODE DISABLED - Normal operation resumed")
+            
+            # Update bulk email tab if it exists
+            if hasattr(self, 'bulk_email_tab'):
+                self.bulk_email_tab.update_test_mode_display()
+    
+    def update_window_title(self):
+        """Update window title with TEST MODE indicator if active"""
+        base_title = "Prohealth AI Assistant"
+        if hasattr(self, 'test_mode_action') and self.test_mode_action.isChecked():
+            self.setWindowTitle(f"🧪 {base_title} - TEST MODE ACTIVE")
+        else:
+            self.setWindowTitle(base_title)
     
     def show_log_viewer(self):
         """Show the log viewer dialog"""
@@ -3058,15 +3202,16 @@ Case Aging:
             if CMS_AVAILABLE and get_session_stats:
                 cms_stats = get_session_stats()
                 pending_count = cms_stats.get('pending_count', 0)
+                processed_count = cms_stats.get('processed_count', 0)
+                total_notes = cms_stats.get('notes_added_count', 0)
                 
-                # Update label
-                self.cms_count_label.setText(str(pending_count))
-                
-                # Update color
+                # Update label text and color
                 if pending_count > 0:
-                    self.cms_count_label.setStyleSheet("font-size: 24px; font-weight: bold; color: red;")
+                    self.cms_count_label.setText(f"{pending_count} pending")
+                    self.cms_count_label.setStyleSheet("font-size: 18px; font-weight: bold; color: red;")
                 else:
-                    self.cms_count_label.setStyleSheet("font-size: 24px; font-weight: bold; color: green;")
+                    self.cms_count_label.setText("All processed")
+                    self.cms_count_label.setStyleSheet("font-size: 18px; font-weight: bold; color: green;")
                 
                 # Update button state if it exists
                 if hasattr(self, 'cms_notes_card'):
@@ -3737,31 +3882,32 @@ Case Aging:
                                        f"Processing {pending_count} CMS notes...", 
                                        maximum=pending_count) as progress:
                         
-                        # Create a wrapper to update progress
+                        # Process the session notes directly (it's not an async generator)
                         async def process_with_progress():
-                            processed = 0
-                            async for result in process_session_cms_notes():
-                                processed += 1
-                                progress.update(processed, f"Processing note {processed}/{pending_count}...")
-                                if progress.is_canceled():
-                                    break
+                            # Update progress periodically while processing
+                            progress.update(0, f"Processing {pending_count} CMS notes...")
+                            result = await process_session_cms_notes()
+                            progress.update(pending_count, f"Completed processing {pending_count} notes")
                             return result
                         
-                        # Process the session notes
+                        # Run the async function
                         results = asyncio.run(process_with_progress())
                     
                     if results:
+                        # Get updated stats after processing
+                        updated_stats = get_session_stats()
+                        
                         success_msg = f"""
                         CMS Notes Processing Complete!
                         
                         Results:
-                        - Notes Added: {results.get('notes_added', 0)}
-                        - Failed: {results.get('failed', 0)}
-                        - Session Log Cleared: {results.get('log_cleared', False)}
+                        - Notes Added: {updated_stats.get('processed_count', 0)}
+                        - Still Pending: {updated_stats.get('pending_count', 0)}
+                        - Total Processed: {updated_stats.get('notes_added_count', 0)}
                         """
                         
                         QMessageBox.information(self, "Success", success_msg)
-                        self.log_activity(f"Processed {results.get('notes_added', 0)} CMS notes")
+                        self.log_activity(f"Processed {pending_count} CMS notes")
                         
                         # Update quick stats and CMS card
                         self.update_quick_stats()

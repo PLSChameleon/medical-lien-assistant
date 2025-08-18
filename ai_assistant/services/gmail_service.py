@@ -20,8 +20,9 @@ logger = logging.getLogger(__name__)
 class GmailService:
     """Gmail API service wrapper"""
     
-    def __init__(self):
+    def __init__(self, email_cache_service=None):
         self.service = None
+        self.email_cache_service = email_cache_service
         self._authenticate()
     
     def _authenticate(self):
@@ -353,6 +354,21 @@ class GmailService:
             ).execute()
             
             logger.info(f"Email sent successfully to {recipient_email}")
+            
+            # Immediately add to email cache if available
+            if self.email_cache_service:
+                try:
+                    self.email_cache_service.add_sent_email_to_cache(
+                        message_id=sent_message["id"],
+                        recipient=recipient_email,
+                        subject=subject,
+                        body_snippet=body[:200] if body else "",
+                        thread_id=thread_id
+                    )
+                    logger.info(f"Email auto-cached: {sent_message['id']}")
+                except Exception as e:
+                    logger.warning(f"Failed to auto-cache sent email: {e}")
+            
             return sent_message["id"]
             
         except Exception as e:

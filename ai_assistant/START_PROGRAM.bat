@@ -43,21 +43,33 @@ if %errorlevel% neq 0 (
 :: Try to run the program
 echo Starting program...
 echo.
-python multi_user_launcher.py
+echo Program will launch in a new window.
+echo This terminal will close automatically in 3 seconds...
+echo.
 
-:: Check if program exited with error
+:: Start the program without console window and exit this batch
+start "" pythonw simple_launcher.py
 if %errorlevel% neq 0 (
-    echo.
-    echo =====================================
-    echo  Program exited with an error
-    echo =====================================
-    echo.
-    echo Possible issues:
-    echo 1. Missing packages - Run INSTALL_SIMPLE.bat
-    echo 2. Missing files - Make sure all files were copied
-    echo 3. Python error - Check the error message above
-    echo.
-    echo For help, run CHECK_INSTALL.bat to diagnose issues
-    echo.
-    pause
+    :: If pythonw fails, try with regular python
+    start "" python simple_launcher.py
+    if %errorlevel% neq 0 (
+        echo.
+        echo =====================================
+        echo  Program failed to start
+        echo =====================================
+        echo.
+        echo Possible issues:
+        echo 1. Missing packages - Run INSTALL_SIMPLE.bat
+        echo 2. Missing files - Make sure all files were copied
+        echo 3. Python error - Check the error message above
+        echo.
+        echo For help, run CHECK_INSTALL.bat to diagnose issues
+        echo.
+        pause
+        exit /b 1
+    )
 )
+
+:: Wait 3 seconds then close
+timeout /t 3 /nobreak >nul
+exit
