@@ -45,6 +45,25 @@ class EnhancedCollectionsTracker:
         except Exception as e:
             logger.error(f"Error saving tracking data: {e}")
     
+    def _compare_datetimes(self, dt1, dt2):
+        """Safely compare two datetimes, handling timezone awareness"""
+        if not dt1 or not dt2:
+            return False
+        
+        import pytz
+        
+        # If both have timezone info or both don't, we can compare directly
+        if (dt1.tzinfo is None) == (dt2.tzinfo is None):
+            return dt1 > dt2
+        
+        # If one has timezone and other doesn't, make both UTC aware
+        if dt1.tzinfo is None:
+            dt1 = pytz.UTC.localize(dt1)
+        if dt2.tzinfo is None:
+            dt2 = pytz.UTC.localize(dt2)
+        
+        return dt1 > dt2
+    
     def save_tracking_data(self):
         """Public method to save tracking data (for compatibility with worker)"""
         # Sync tracking_data back to main data structure
@@ -211,7 +230,11 @@ class EnhancedCollectionsTracker:
                 # Parse email date
                 try:
                     from email.utils import parsedate_to_datetime
+                    import pytz
                     email_datetime = parsedate_to_datetime(email_date) if email_date else None
+                    # Ensure datetime is timezone-aware (UTC if not specified)
+                    if email_datetime and email_datetime.tzinfo is None:
+                        email_datetime = pytz.UTC.localize(email_datetime)
                 except:
                     email_datetime = None
                 
@@ -235,8 +258,12 @@ class EnhancedCollectionsTracker:
                     
                     # Update last sent date
                     if email_datetime:
-                        if not case_tracking['last_sent'] or email_datetime > datetime.fromisoformat(case_tracking['last_sent']):
+                        if not case_tracking['last_sent']:
                             case_tracking['last_sent'] = email_datetime.isoformat()
+                        else:
+                            stored_dt = datetime.fromisoformat(case_tracking['last_sent'])
+                            if self._compare_datetimes(email_datetime, stored_dt):
+                                case_tracking['last_sent'] = email_datetime.isoformat()
                 else:
                     case_tracking['received_emails'].append(activity)
                     case_tracking['response_count'] += 1
@@ -263,13 +290,21 @@ class EnhancedCollectionsTracker:
                     
                     # Update last received date
                     if email_datetime:
-                        if not case_tracking['last_received'] or email_datetime > datetime.fromisoformat(case_tracking['last_received']):
+                        if not case_tracking['last_received']:
                             case_tracking['last_received'] = email_datetime.isoformat()
+                        else:
+                            stored_dt = datetime.fromisoformat(case_tracking['last_received'])
+                            if self._compare_datetimes(email_datetime, stored_dt):
+                                case_tracking['last_received'] = email_datetime.isoformat()
                 
                 # Update last contact (most recent of sent or received)
                 if email_datetime:
-                    if not case_tracking['last_contact'] or email_datetime > datetime.fromisoformat(case_tracking['last_contact']):
+                    if not case_tracking['last_contact']:
                         case_tracking['last_contact'] = email_datetime.isoformat()
+                    else:
+                        stored_dt = datetime.fromisoformat(case_tracking['last_contact'])
+                        if self._compare_datetimes(email_datetime, stored_dt):
+                            case_tracking['last_contact'] = email_datetime.isoformat()
         
         # After processing all emails, check CCP 335.1 eligibility for each case
         logger.info("Checking CCP 335.1 eligibility for all cases...")
@@ -293,8 +328,10 @@ class EnhancedCollectionsTracker:
                         if pd.isna(doi_date):
                             continue
                     
-                    # Check if over 2 years old
-                    years_old = (datetime.now() - doi_date).days / 365
+                    # Check if over 2 years old (ensure timezone-aware comparison)
+                    import pytz
+                    now = datetime.now(pytz.UTC) if doi_date.tzinfo else datetime.now()
+                    years_old = (now - doi_date).days / 365
                     if years_old > 2 and not case_tracking['has_litigation_keywords']:
                         case_tracking['ccp_335_1_eligible'] = True
                         ccp_335_1_count += 1
