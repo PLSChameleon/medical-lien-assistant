@@ -299,7 +299,8 @@ class EnhancedCollectionsTracker:
             "no_response": [],     # Sent email, no response for 30-59 days
             "recently_sent": [],   # Sent email within last 30 days (new category)
             "never_contacted": [], # No activity at all
-            "missing_doi": []      # Cases without DOI
+            "missing_doi": [],     # Cases without DOI
+            "ccp_335_1": []        # Cases over 2 years old without litigation status
         }
         
         import pytz
@@ -376,6 +377,34 @@ class EnhancedCollectionsTracker:
                 else:
                     # No date info, put in recently_sent as it might be new
                     stale_cases['recently_sent'].append(case_summary)
+            
+            # Check for CCP 335.1 eligibility (cases over 2 years old)
+            # Only check if DOI is available and valid
+            if doi_str and '2099' not in doi_str:
+                try:
+                    # Import the CCP 335.1 eligibility checker
+                    from templates.ccp_335_1_template import is_ccp_335_1_eligible
+                    
+                    # Prepare case data for CCP check
+                    ccp_case_data = {
+                        'pv': pv,
+                        'doi': doi_value,
+                        'attorney_email': case_data['case_info'].get('attorney_email', '')
+                    }
+                    
+                    # Check eligibility (this will check DOI age and litigation status)
+                    if is_ccp_335_1_eligible(ccp_case_data):
+                        # Don't add if already in another category
+                        already_categorized = any(
+                            any(c['pv'] == pv for c in cases)
+                            for cat, cases in stale_cases.items()
+                            if cat != 'ccp_335_1'
+                        )
+                        if not already_categorized:
+                            stale_cases['ccp_335_1'].append(case_summary)
+                            logger.debug(f"Case {pv} added to CCP 335.1 category")
+                except Exception as e:
+                    logger.debug(f"Error checking CCP 335.1 eligibility for {pv}: {e}")
         
         return stale_cases
     

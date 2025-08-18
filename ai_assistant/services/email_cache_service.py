@@ -754,7 +754,9 @@ class EmailCacheService:
             'litigation', 'lawsuit', 'filed', 'case number', 'venue',
             'settled', 'settlement', 'resolved', 'dismissed',
             'court', 'trial', 'verdict', 'judgment', 'complaint',
-            'docket', 'superior court', 'federal court', 'arbitration'
+            'docket', 'superior court', 'federal court', 'arbitration',
+            'pre-litigation', 'prelitigation', 'prelit', 'pre litigation',
+            'pre-lit', 'in litigation', 'litigating', 'litigated'
         ]
         
         # Get emails for this case

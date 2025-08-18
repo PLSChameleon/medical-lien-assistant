@@ -152,6 +152,10 @@ class StaleCaseWidget(QWidget):
         self.missing_doi_widget = self.create_category_widget("missing_doi", "❓ Missing DOI")
         self.category_tabs.addTab(self.missing_doi_widget, "Missing DOI")
         
+        # CCP 335.1 tab (cases over 2 years old with no litigation status)
+        self.ccp_335_1_widget = self.create_category_widget("ccp_335_1", "⚖️ CCP 335.1 (>2yr Statute)")
+        self.category_tabs.addTab(self.ccp_335_1_widget, "CCP 335.1")
+        
         # Summary statistics
         self.stats_label = QLabel()
         self.update_stats()
@@ -318,6 +322,11 @@ class StaleCaseWidget(QWidget):
             status_action = action_menu.addAction("📮 Draft Status Request")
             status_action.triggered.connect(lambda checked, p=pv: self.draft_status_request(p))
             
+            # Add CCP 335.1 action if in CCP 335.1 category
+            if category == "ccp_335_1":
+                ccp_action = action_menu.addAction("⚖️ Send CCP 335.1 Inquiry")
+                ccp_action.triggered.connect(lambda checked, p=pv, c=case: self.send_ccp_335_1_inquiry(p, c))
+            
             action_menu.addSeparator()
             
             # Acknowledgment actions
@@ -442,6 +451,79 @@ class StaleCaseWidget(QWidget):
         """Trigger status request draft"""
         if self.parent_window:
             self.parent_window.draft_status_request_by_pv(pv)
+    
+    def send_ccp_335_1_inquiry(self, pv, case_data):
+        """Send CCP 335.1 statute of limitations inquiry"""
+        try:
+            # Get full case details from case manager
+            case = self.case_manager.get_case_by_pv(pv)
+            if not case:
+                QMessageBox.warning(self, "Case Not Found", f"Could not find case {pv}")
+                return
+            
+            # Import CCP 335.1 template
+            from templates.ccp_335_1_template import get_ccp_335_1_email
+            
+            # Prepare case data for template
+            ccp_case_data = {
+                'pv': pv,
+                'name': case.get('Name', 'Unknown'),
+                'doi': case.get('DOI', 'Unknown'),
+                'cms': case.get('CMS', 'Unknown'),
+                'amount': case.get('Balance', '[AMOUNT]')
+            }
+            
+            # Generate email content
+            subject, body = get_ccp_335_1_email(ccp_case_data)
+            
+            # Get attorney email
+            attorney_email = case.get('Attorney Email', '')
+            if not attorney_email:
+                QMessageBox.warning(self, "No Email", "No attorney email found for this case")
+                return
+            
+            # Show email preview dialog
+            dialog = EmailPreviewDialog(attorney_email, subject, body, pv, self)
+            dialog.setWindowTitle(f"CCP 335.1 Inquiry - {pv}")
+            
+            if dialog.exec_() and dialog.approved:
+                # Send the email
+                if self.parent_window and hasattr(self.parent_window, 'gmail_service'):
+                    try:
+                        self.parent_window.gmail_service.send_message(
+                            dialog.recipient,
+                            dialog.email_subject,
+                            dialog.email_body
+                        )
+                        
+                        # Log the activity
+                        self.parent_window.log_activity(f"Sent CCP 335.1 inquiry for {pv} to {dialog.recipient}")
+                        
+                        # Add CMS note if available
+                        if CMS_AVAILABLE and add_cms_note_for_email:
+                            add_cms_note_for_email(
+                                pv_number=pv,
+                                note_text=f"CCP 335.1 Inquiry sent to {dialog.recipient}",
+                                sent_to=dialog.recipient,
+                                email_type="ccp_335_1"
+                            )
+                        
+                        QMessageBox.information(self, "Success", f"CCP 335.1 inquiry sent for {pv}")
+                        
+                        # Update the case as contacted
+                        if hasattr(self.collections_tracker, 'mark_case_as_contacted'):
+                            self.collections_tracker.mark_case_as_contacted(pv, is_sent=True)
+                        
+                        # Refresh the display
+                        self.refresh_analysis()
+                        
+                    except Exception as e:
+                        QMessageBox.critical(self, "Send Failed", f"Failed to send email: {str(e)}")
+                else:
+                    QMessageBox.warning(self, "Gmail Not Available", "Gmail service is not available")
+                    
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to prepare CCP 335.1 inquiry: {str(e)}")
     
     def acknowledge_case(self, pv, case_name="", status=""):
         """Acknowledge a case with snooze options"""
@@ -805,6 +887,24 @@ class BulkEmailWidget(QWidget):
         button_layout.addWidget(self.export_btn)
         
         layout.addLayout(button_layout)
+        
+        # Status bar for real-time updates
+        status_group = QGroupBox("Processing Status")
+        status_layout = QVBoxLayout()
+        
+        self.status_label = QLabel("Ready to process emails")
+        self.status_label.setStyleSheet("padding: 5px; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 3px;")
+        status_layout.addWidget(self.status_label)
+        
+        # Processing log
+        self.processing_log = QTextEdit()
+        self.processing_log.setMaximumHeight(100)
+        self.processing_log.setReadOnly(True)
+        self.processing_log.setPlaceholderText("Processing log will appear here...")
+        status_layout.addWidget(self.processing_log)
+        
+        status_group.setLayout(status_layout)
+        layout.addWidget(status_group)
         
         # Statistics
         self.stats_label = QLabel()
@@ -1251,7 +1351,7 @@ class BulkEmailWidget(QWidget):
             return []
     
     def send_batch(self):
-        """Send the selected emails"""
+        """Send the selected emails with progress tracking"""
         try:
             if not hasattr(self, 'current_batch') or not self.current_batch:
                 QMessageBox.warning(self, "No Batch", "Please populate a batch first.")
@@ -1278,19 +1378,93 @@ class BulkEmailWidget(QWidget):
             )
             
             if reply == QMessageBox.Yes:
-                QApplication.setOverrideCursor(Qt.WaitCursor)
-                
-                # Send emails
-                results = self.bulk_service.send_batch(selected_emails)
-                
-                QApplication.restoreOverrideCursor()
-                
-                # Show results
-                QMessageBox.information(
-                    self, "Batch Complete",
-                    f"Sent: {len(results['sent'])} emails\n"
-                    f"Failed: {len(results['failed'])} emails"
+                # Create progress dialog
+                progress_dialog = QProgressDialog(
+                    "Sending emails...", "Cancel", 0, len(selected_emails), self
                 )
+                progress_dialog.setWindowTitle("Bulk Email Progress")
+                progress_dialog.setWindowModality(Qt.WindowModal)
+                progress_dialog.setMinimumDuration(0)
+                progress_dialog.setValue(0)
+                
+                # Clear processing log
+                self.processing_log.clear()
+                self.status_label.setText(f"Starting to send {len(selected_emails)} emails...")
+                
+                # Log start of batch
+                if self.parent_window:
+                    self.parent_window.log_activity(f"Starting bulk email batch: {len(selected_emails)} emails")
+                self.processing_log.append(f"📤 Starting bulk email batch: {len(selected_emails)} emails")
+                
+                # Process emails with progress updates
+                sent_emails = []
+                failed_emails = []
+                
+                for i, email_data in enumerate(selected_emails):
+                    if progress_dialog.wasCanceled():
+                        self.processing_log.append("⚠️ Processing cancelled by user")
+                        break
+                    
+                    # Update progress
+                    pv = email_data.get('pv', 'Unknown')
+                    name = email_data.get('name', 'Unknown')
+                    progress_dialog.setLabelText(f"Sending email {i+1}/{len(selected_emails)}\nPV: {pv}")
+                    progress_dialog.setValue(i)
+                    
+                    # Process email
+                    try:
+                        # Send individual email
+                        result = self.bulk_service.send_batch([email_data])
+                        if result['sent']:
+                            sent_emails.extend(result['sent'])
+                            # Log successful send
+                            log_msg = f"✅ Sent: PV {pv} - {name}"
+                            self.processing_log.append(log_msg)
+                            if self.parent_window:
+                                self.parent_window.log_activity(log_msg)
+                        else:
+                            failed_emails.extend(result['failed'])
+                            # Log failed send
+                            log_msg = f"❌ Failed: PV {pv} - {name}"
+                            self.processing_log.append(log_msg)
+                            if self.parent_window:
+                                self.parent_window.log_activity(log_msg)
+                    except Exception as e:
+                        failed_emails.append({'pv': pv, 'error': str(e)})
+                        log_msg = f"❌ Error: PV {pv} - {str(e)[:50]}"
+                        self.processing_log.append(log_msg)
+                        if self.parent_window:
+                            self.parent_window.log_activity(f"❌ Error sending email for PV {pv}: {str(e)}")
+                    
+                    # Update status label
+                    self.status_label.setText(f"Processing: {i+1}/{len(selected_emails)} | Sent: {len(sent_emails)} | Failed: {len(failed_emails)}")
+                    
+                    # Scroll log to bottom
+                    self.processing_log.moveCursor(self.processing_log.textCursor().End)
+                    QApplication.processEvents()
+                
+                progress_dialog.setValue(len(selected_emails))
+                progress_dialog.close()
+                
+                # Log completion
+                self.processing_log.append(f"\n📊 Batch Complete: {len(sent_emails)} sent, {len(failed_emails)} failed")
+                self.status_label.setText(f"Batch complete: {len(sent_emails)} sent, {len(failed_emails)} failed")
+                if self.parent_window:
+                    self.parent_window.log_activity(f"Batch complete: {len(sent_emails)} sent, {len(failed_emails)} failed")
+                
+                # Show detailed results
+                result_msg = f"Batch Processing Complete!\n\n"
+                result_msg += f"✅ Successfully Sent: {len(sent_emails)} emails\n"
+                result_msg += f"❌ Failed: {len(failed_emails)} emails\n\n"
+                
+                if failed_emails:
+                    result_msg += "Failed emails:\n"
+                    for fail in failed_emails[:5]:  # Show first 5 failures
+                        result_msg += f"  • PV {fail.get('pv', 'Unknown')}: {fail.get('error', 'Unknown error')}\n"
+                    if len(failed_emails) > 5:
+                        result_msg += f"  ... and {len(failed_emails) - 5} more\n"
+                
+                QMessageBox.information(self, "Batch Complete", result_msg)
                 
                 # Clear preview and reset batch
                 self.preview_table.setRowCount(0)
@@ -1304,10 +1478,11 @@ class BulkEmailWidget(QWidget):
                 # Update the CMS card to reflect new pending notes
                 if hasattr(self.parent_window, 'update_cms_card'):
                     self.parent_window.update_cms_card()
-                    self.parent_window.log_activity(f"Added {len(results['sent'])} emails to CMS notes queue")
+                    self.parent_window.log_activity(f"Added {len(sent_emails)} emails to CMS notes queue")
                 
         except Exception as e:
-            QApplication.restoreOverrideCursor()
+            if 'progress_dialog' in locals():
+                progress_dialog.close()
             QMessageBox.critical(self, "Error", f"Failed to send batch: {str(e)}")
     
     def export_batch(self):

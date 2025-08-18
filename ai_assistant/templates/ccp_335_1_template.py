@@ -124,9 +124,12 @@ def is_ccp_335_1_eligible(case_data, email_cache_service=None):
                     details = litigation_info.get('details', {})
                     keywords = details.get('keywords_found', [])
                     
-                    # Only exclude if we have definitive keywords
+                    # Only exclude if we have definitive keywords indicating litigation status
                     definitive_keywords = ['settled', 'settlement', 'case number', 'venue', 
-                                         'trial', 'verdict', 'judgment', 'dismissed']
+                                         'trial', 'verdict', 'judgment', 'dismissed',
+                                         'litigation', 'pre-litigation', 'prelitigation', 
+                                         'prelit', 'pre litigation', 'pre-lit', 'in litigation',
+                                         'litigating', 'litigated', 'lawsuit', 'filed']
                     
                     if any(kw in definitive_keywords for kw in keywords):
                         logger.debug(f"Case {pv} excluded from CCP 335.1 - has litigation status: {keywords}")
