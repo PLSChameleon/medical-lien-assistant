@@ -393,7 +393,8 @@ class EnhancedCollectionsTracker:
                     }
                     
                     # Check eligibility (this will check DOI age and litigation status)
-                    if is_ccp_335_1_eligible(ccp_case_data):
+                    # Pass the email cache service to check for litigation keywords
+                    if is_ccp_335_1_eligible(ccp_case_data, self.email_cache):
                         # Don't add if already in another category
                         already_categorized = any(
                             any(c['pv'] == pv for c in cases)
@@ -402,9 +403,9 @@ class EnhancedCollectionsTracker:
                         )
                         if not already_categorized:
                             stale_cases['ccp_335_1'].append(case_summary)
-                            logger.debug(f"Case {pv} added to CCP 335.1 category")
+                            logger.info(f"Case {pv} added to CCP 335.1 category - DOI: {doi_str}")
                 except Exception as e:
-                    logger.debug(f"Error checking CCP 335.1 eligibility for {pv}: {e}")
+                    logger.warning(f"Error checking CCP 335.1 eligibility for {pv}: {e}")
         
         return stale_cases
     

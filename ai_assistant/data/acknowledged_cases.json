@@ -25,5 +25,14 @@
     "notes": "firm saud case is in litigation waiting to serttle ",
     "snooze_days": 180,
     "review_after": "2026-02-14T14:05:07.418768"
+  },
+  "378816": {
+    "acknowledged_date": "2025-08-18T15:24:02.232809",
+    "acknowledged_by": "user",
+    "reason": "REVIEWED - No action needed",
+    "status": "Active",
+    "notes": "firm saying its gonna take a while to settle ",
+    "snooze_days": 90,
+    "review_after": "2025-11-16T15:24:02.232820"
   }
 }

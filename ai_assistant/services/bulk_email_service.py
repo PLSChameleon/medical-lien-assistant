@@ -560,10 +560,68 @@ Prohealth Advanced Imaging
                 logger.info("CCP 335.1 category requested - running eligibility checks...")
                 self.categorize_cases(force_refresh=True, check_ccp_335_1=True)
             
-            # Check if this is a stale case category
+            # Check if this is a stale case category (from collections tracker)
             stale_categories = ["critical", "high_priority", "no_response", "recently_sent", "never_contacted", "missing_doi"]
             
-            if category in stale_categories:
+            # CCP 335.1 can come from either collections tracker or bulk email categorization
+            if category == "ccp_335_1":
+                # Try to get from collections tracker first
+                if self.collections_tracker:
+                    logger.info(f"Getting CCP 335.1 cases from collections tracker...")
+                    stale_data = self.collections_tracker.get_stale_cases_by_category(
+                        self.case_manager, "ccp_335_1", limit=limit or 100
+                    )
+                    cases = stale_data.get("cases", [])
+                    
+                    # Format cases from collections tracker
+                    if cases:
+                        from services.case_acknowledgment_service import CaseAcknowledgmentService
+                        ack_service = CaseAcknowledgmentService()
+                        
+                        formatted_cases = []
+                        for stale_case in cases:
+                            pv = stale_case.get("pv")
+                            
+                            # Skip acknowledged cases
+                            if ack_service.is_acknowledged(pv):
+                                logger.info(f"Skipping acknowledged CCP 335.1 case {pv}")
+                                continue
+                            
+                            formatted_case = {
+                                "pv": pv,
+                                "name": stale_case.get("name"),
+                                "doi": stale_case.get("doi", ""),
+                                "cms": "",  # Will be fetched from case manager
+                                "attorney_email": stale_case.get("attorney_email"),
+                                "law_firm": stale_case.get("law_firm"),
+                                "status": stale_case.get("status", ""),
+                                "days_since_sent": stale_case.get("days_since_sent"),
+                                "response_count": stale_case.get("response_count", 0)
+                            }
+                            
+                            # Fetch full case details from case manager
+                            try:
+                                df = self.case_manager.df
+                                case_row = df[df[1].astype(str) == str(pv)]
+                                if not case_row.empty:
+                                    full_case = self.case_manager.format_case(case_row.iloc[0])
+                                    formatted_case["doi"] = full_case.get("DOI", "")
+                                    formatted_case["cms"] = full_case.get("CMS", "")
+                                    formatted_case["full_case"] = full_case
+                            except:
+                                pass
+                            
+                            formatted_cases.append(formatted_case)
+                        
+                        cases = formatted_cases
+                    
+                # If no cases from tracker, use bulk email categorization
+                if not cases:
+                    logger.info("No CCP 335.1 cases from tracker, using bulk email categorization...")
+                    cases = self.categorized_cases.get("ccp_335_1", [])
+                
+                logger.info(f"Found {len(cases)} CCP 335.1 cases")
+            elif category in stale_categories:
                 # Get stale cases from collections tracker
                 if self.collections_tracker:
                     logger.info(f"Getting {category} cases from collections tracker...")

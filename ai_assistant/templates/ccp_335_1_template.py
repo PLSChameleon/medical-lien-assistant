@@ -94,7 +94,8 @@ def is_ccp_335_1_eligible(case_data, email_cache_service=None):
     
     # Check if DOI is over 2 years old
     doi_raw = case_data.get('doi')
-    if not doi_raw or str(doi_raw) in ['nan', 'NaT', '2099', 'UNKNOWN', '']:
+    if not doi_raw or str(doi_raw) in ['nan', 'NaT', '2099', 'UNKNOWN', '', 'None']:
+        logger.debug(f"Case {case_data.get('pv')} - No valid DOI found: {doi_raw}")
         return False
     
     try:
@@ -103,12 +104,19 @@ def is_ccp_335_1_eligible(case_data, email_cache_service=None):
             doi_date = doi_raw
         else:
             doi_str = str(doi_raw).split()[0]
-            doi_date = pd.to_datetime(doi_str)
+            # Try to parse the date
+            doi_date = pd.to_datetime(doi_str, errors='coerce')
+            if pd.isna(doi_date):
+                logger.debug(f"Case {case_data.get('pv')} - Could not parse DOI: {doi_str}")
+                return False
         
         # Check if over 2 years old
         years_old = (datetime.now() - doi_date).days / 365
         if years_old <= 2:
+            logger.debug(f"Case {case_data.get('pv')} not eligible for CCP 335.1 - DOI only {years_old:.1f} years old (needs >2)")
             return False
+        
+        logger.info(f"Case {case_data.get('pv')} - DOI is {years_old:.1f} years old (>2 years), checking litigation status...")
         
         # If we have email cache, check if we've already received litigation info
         # But be more lenient - only exclude if we have CLEAR litigation status
@@ -119,21 +127,16 @@ def is_ccp_335_1_eligible(case_data, email_cache_service=None):
                 
                 # Check if we have clear litigation status for this case
                 litigation_info = email_cache_service.has_litigation_status(pv, attorney_email)
-                if litigation_info.get('has_status'):
-                    # Check if the keywords indicate active litigation or settlement
+                
+                # If we found litigation keywords, exclude this case from CCP 335.1
+                if litigation_info and litigation_info.get('has_status'):
                     details = litigation_info.get('details', {})
                     keywords = details.get('keywords_found', [])
-                    
-                    # Only exclude if we have definitive keywords indicating litigation status
-                    definitive_keywords = ['settled', 'settlement', 'case number', 'venue', 
-                                         'trial', 'verdict', 'judgment', 'dismissed',
-                                         'litigation', 'pre-litigation', 'prelitigation', 
-                                         'prelit', 'pre litigation', 'pre-lit', 'in litigation',
-                                         'litigating', 'litigated', 'lawsuit', 'filed']
-                    
-                    if any(kw in definitive_keywords for kw in keywords):
-                        logger.debug(f"Case {pv} excluded from CCP 335.1 - has litigation status: {keywords}")
-                        return False
+                    logger.debug(f"Case {pv} excluded from CCP 335.1 - has litigation status: {keywords}")
+                    return False
+                
+                # If no litigation info found, this case IS eligible for CCP 335.1
+                logger.debug(f"Case {pv} eligible for CCP 335.1 - no litigation status received from firm")
             except Exception as e:
                 # If there's an error checking email cache, still allow CCP 335.1
                 logger.warning(f"Error checking email cache for CCP 335.1 eligibility: {e}")

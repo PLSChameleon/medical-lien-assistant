@@ -752,11 +752,12 @@ class EmailCacheService:
         """
         litigation_keywords = [
             'litigation', 'lawsuit', 'filed', 'case number', 'venue',
-            'settled', 'settlement', 'resolved', 'dismissed',
+            'settled', 'settlement', 'resolved', 'dismissed', 'pending',
             'court', 'trial', 'verdict', 'judgment', 'complaint',
             'docket', 'superior court', 'federal court', 'arbitration',
             'pre-litigation', 'prelitigation', 'prelit', 'pre litigation',
-            'pre-lit', 'in litigation', 'litigating', 'litigated'
+            'pre-lit', 'in litigation', 'litigating', 'litigated', 'case settled',
+            'matter settled', 'pending litigation', 'pending settlement'
         ]
         
         # Get emails for this case
