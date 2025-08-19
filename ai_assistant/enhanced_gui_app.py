@@ -892,23 +892,10 @@ class BulkEmailWidget(QWidget):
         
         layout.addLayout(button_layout)
         
-        # Status bar for real-time updates
-        status_group = QGroupBox("Processing Status")
-        status_layout = QVBoxLayout()
-        
+        # Simple status label (minimal space)
         self.status_label = QLabel("Ready to process emails")
-        self.status_label.setStyleSheet("padding: 5px; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 3px;")
-        status_layout.addWidget(self.status_label)
-        
-        # Processing log
-        self.processing_log = QTextEdit()
-        self.processing_log.setMaximumHeight(100)
-        self.processing_log.setReadOnly(True)
-        self.processing_log.setPlaceholderText("Processing log will appear here...")
-        status_layout.addWidget(self.processing_log)
-        
-        status_group.setLayout(status_layout)
-        layout.addWidget(status_group)
+        self.status_label.setStyleSheet("padding: 3px; color: #666;")
+        layout.addWidget(self.status_label)
         
         # Statistics
         self.stats_label = QLabel()
@@ -1391,14 +1378,12 @@ class BulkEmailWidget(QWidget):
                 progress_dialog.setMinimumDuration(0)
                 progress_dialog.setValue(0)
                 
-                # Clear processing log
-                self.processing_log.clear()
+                # Update status
                 self.status_label.setText(f"Starting to send {len(selected_emails)} emails...")
                 
-                # Log start of batch
+                # Log start of batch to main activity log
                 if self.parent_window:
-                    self.parent_window.log_activity(f"Starting bulk email batch: {len(selected_emails)} emails")
-                self.processing_log.append(f"📤 Starting bulk email batch: {len(selected_emails)} emails")
+                    self.parent_window.log_activity(f"📤 Starting bulk email batch: {len(selected_emails)} emails")
                 
                 # Process emails with progress updates
                 sent_emails = []
@@ -1406,13 +1391,14 @@ class BulkEmailWidget(QWidget):
                 
                 for i, email_data in enumerate(selected_emails):
                     if progress_dialog.wasCanceled():
-                        self.processing_log.append("⚠️ Processing cancelled by user")
+                        if self.parent_window:
+                            self.parent_window.log_activity("⚠️ Processing cancelled by user")
                         break
                     
                     # Update progress
                     pv = email_data.get('pv', 'Unknown')
                     name = email_data.get('name', 'Unknown')
-                    progress_dialog.setLabelText(f"Sending email {i+1}/{len(selected_emails)}\nPV: {pv}")
+                    progress_dialog.setLabelText(f"Sending email {i+1}/{len(selected_emails)}\nPV: {pv} - {name}")
                     progress_dialog.setValue(i)
                     
                     # Process email
@@ -1421,40 +1407,30 @@ class BulkEmailWidget(QWidget):
                         result = self.bulk_service.send_batch([email_data])
                         if result['sent']:
                             sent_emails.extend(result['sent'])
-                            # Log successful send
-                            log_msg = f"✅ Sent: PV {pv} - {name}"
-                            self.processing_log.append(log_msg)
+                            # Log successful send to main activity log
                             if self.parent_window:
-                                self.parent_window.log_activity(log_msg)
+                                self.parent_window.log_activity(f"✅ Sent email for PV {pv} - {name}")
                         else:
                             failed_emails.extend(result['failed'])
-                            # Log failed send
-                            log_msg = f"❌ Failed: PV {pv} - {name}"
-                            self.processing_log.append(log_msg)
+                            # Log failed send to main activity log
                             if self.parent_window:
-                                self.parent_window.log_activity(log_msg)
+                                self.parent_window.log_activity(f"❌ Failed to send for PV {pv} - {name}")
                     except Exception as e:
                         failed_emails.append({'pv': pv, 'error': str(e)})
-                        log_msg = f"❌ Error: PV {pv} - {str(e)[:50]}"
-                        self.processing_log.append(log_msg)
                         if self.parent_window:
                             self.parent_window.log_activity(f"❌ Error sending email for PV {pv}: {str(e)}")
                     
-                    # Update status label
+                    # Update status label with progress
                     self.status_label.setText(f"Processing: {i+1}/{len(selected_emails)} | Sent: {len(sent_emails)} | Failed: {len(failed_emails)}")
-                    
-                    # Scroll log to bottom
-                    self.processing_log.moveCursor(self.processing_log.textCursor().End)
                     QApplication.processEvents()
                 
                 progress_dialog.setValue(len(selected_emails))
                 progress_dialog.close()
                 
-                # Log completion
-                self.processing_log.append(f"\n📊 Batch Complete: {len(sent_emails)} sent, {len(failed_emails)} failed")
+                # Log completion to main activity log
                 self.status_label.setText(f"Batch complete: {len(sent_emails)} sent, {len(failed_emails)} failed")
                 if self.parent_window:
-                    self.parent_window.log_activity(f"Batch complete: {len(sent_emails)} sent, {len(failed_emails)} failed")
+                    self.parent_window.log_activity(f"📊 Batch complete: {len(sent_emails)} sent, {len(failed_emails)} failed")
                 
                 # Show detailed results
                 result_msg = f"Batch Processing Complete!\n\n"
