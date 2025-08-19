@@ -26,6 +26,7 @@ class EmailCacheWorker(QThread):
         self.args = args
         self.kwargs = kwargs
         self.result = None
+        self.from_date = kwargs.get('from_date')
         
     def run(self):
         """Run the email operation in background thread"""
@@ -39,9 +40,16 @@ class EmailCacheWorker(QThread):
             
             # Run the operation
             if self.operation == 'bootstrap':
-                self.result = self.email_cache_service.bootstrap_all_emails_threaded(
-                    progress_callback=progress_callback
-                )
+                if self.from_date:
+                    # Bootstrap from specific date
+                    self.result = self.email_cache_service.bootstrap_from_date_threaded(
+                        self.from_date, progress_callback=progress_callback
+                    )
+                else:
+                    # Full bootstrap
+                    self.result = self.email_cache_service.bootstrap_all_emails_threaded(
+                        progress_callback=progress_callback
+                    )
             elif self.operation == 'refresh':
                 max_results = self.args[0] if self.args else 500
                 self.result = self.email_cache_service.download_sent_emails_threaded(

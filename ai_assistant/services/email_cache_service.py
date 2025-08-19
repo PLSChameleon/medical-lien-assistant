@@ -14,8 +14,11 @@ class EmailCacheService:
         self.gmail_service = gmail_service or GmailService()
         self.cache_file = Config.get_file_path("data/email_cache.json")
         self.cadence_file = Config.get_file_path("data/cadence_analysis.json")
+        self.default_cadence_file = Config.get_file_path("data/default_cadence_profile.json")
+        self.active_cadence_profile = "personal"  # Can be "personal" or "default"
         self.cache = self._load_cache()
         self.cadence = self._load_cadence()
+        self.default_cadence = self._load_default_cadence()
     
     def _load_cache(self):
         """Load email cache from file"""
@@ -96,6 +99,17 @@ class EmailCacheService:
             logger.error(f"Error loading cadence analysis: {e}")
             return {}
     
+    def _load_default_cadence(self):
+        """Load default cadence profile from file"""
+        try:
+            if os.path.exists(self.default_cadence_file):
+                with open(self.default_cadence_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            return {}
+        except Exception as e:
+            logger.error(f"Error loading default cadence profile: {e}")
+            return {}
+    
     def _save_cadence(self):
         """Save cadence analysis to file"""
         try:
@@ -116,6 +130,10 @@ class EmailCacheService:
     def bootstrap_all_emails_threaded(self, progress_callback=None):
         """Thread-safe version of bootstrap_all_emails for background execution"""
         return self._full_sync_threaded(max_results=None, progress_callback=progress_callback)
+    
+    def bootstrap_from_date_threaded(self, from_date, progress_callback=None):
+        """Thread-safe version to bootstrap emails from a specific date"""
+        return self._full_sync_from_date_threaded(from_date, progress_callback=progress_callback)
     
     def update_cache(self, incremental=True, progress=None):
         """Update the email cache (incremental by default)"""
@@ -394,9 +412,34 @@ class EmailCacheService:
         
         print(f"\n📝 Common subject words: {', '.join(self.cadence.get('common_subject_words', [])[:5])}")
     
+    def set_cadence_profile(self, profile):
+        """Set the active cadence profile
+        
+        Args:
+            profile (str): Either 'personal' or 'default'
+        """
+        if profile not in ['personal', 'default']:
+            raise ValueError("Profile must be either 'personal' or 'default'")
+        self.active_cadence_profile = profile
+        logger.info(f"Switched to {profile} cadence profile")
+    
+    def get_active_cadence(self):
+        """Get the currently active cadence profile data"""
+        if self.active_cadence_profile == 'default':
+            return self.default_cadence
+        else:
+            return self.cadence
+    
+    def get_cadence_profile_name(self):
+        """Get the name of the active cadence profile"""
+        return self.active_cadence_profile
+    
     def get_cadence_guidance(self):
         """Get cadence guidance for email drafting"""
-        if not self.cadence:
+        # Use the active cadence profile
+        active_cadence = self.get_active_cadence()
+        
+        if not active_cadence:
             return {
                 "tone": "professional",
                 "style": "formal",
@@ -404,10 +447,10 @@ class EmailCacheService:
                 "closing": "Best regards,\nDean Hyland\nProhealth Advanced Imaging"
             }
         
-        style = self.cadence.get('style_patterns', {})
-        tone = self.cadence.get('tone_indicators', {})
-        greetings = self.cadence.get('greeting_patterns', [])
-        closings = self.cadence.get('closing_patterns', [])
+        style = active_cadence.get('style_patterns', {})
+        tone = active_cadence.get('tone_indicators', {})
+        greetings = active_cadence.get('greeting_patterns', [])
+        closings = active_cadence.get('closing_patterns', [])
         
         # Determine preferred style
         preferred_style = "formal" if style.get('formal_language', 0) > style.get('casual_language', 0) else "casual"
@@ -860,6 +903,69 @@ class EmailCacheService:
         
         if progress_callback:
             progress_callback(100, "Complete!", "✅ Email sync complete")
+        
+        return sent_emails
+    
+    def _full_sync_from_date_threaded(self, from_date, progress_callback=None):
+        """Thread-safe version to sync emails from a specific date"""
+        if progress_callback:
+            progress_callback(0, f"Searching for emails from {from_date}...", f"📥 Starting email sync from {from_date}")
+        else:
+            print(f"📥 Performing sync: Downloading emails from {from_date} forward...")
+        
+        # Build query for emails from specified date (both sent and received)
+        query = f"(in:sent OR in:inbox) after:{from_date}"
+        
+        if progress_callback:
+            progress_callback(5, "Searching Gmail...", f"🔍 Query: {query}")
+        
+        # Use threaded Gmail search
+        sent_emails = self.gmail_service.search_messages_threaded(query, None, progress_callback)
+        
+        if not sent_emails:
+            msg = f"❌ No emails found from {from_date} forward"
+            if progress_callback:
+                progress_callback(100, msg, msg)
+            else:
+                print(msg)
+            return []
+        
+        msg = f"✅ Found {len(sent_emails)} emails from {from_date} forward"
+        if progress_callback:
+            progress_callback(90, "Saving cache...", msg)
+        else:
+            print(msg)
+        
+        # Get the latest history ID from the most recent email
+        latest_history_id = None
+        if sent_emails:
+            try:
+                latest_msg = self.gmail_service.get_message(sent_emails[0]['id'])
+                if latest_msg:
+                    latest_history_id = latest_msg.get('historyId')
+            except:
+                pass
+        
+        # Update cache - store the start date to use for future incremental updates
+        self.cache = {
+            "emails": sent_emails,
+            "last_updated": datetime.now().isoformat(),
+            "last_sync_time": datetime.now().isoformat(),
+            "last_history_id": latest_history_id,
+            "total_count": len(sent_emails),
+            "initial_from_date": from_date  # Store the initial download date
+        }
+        
+        self._save_cache()
+        
+        if progress_callback:
+            progress_callback(95, "Analyzing cadence...", "🧠 Analyzing email patterns")
+        
+        # Analyze cadence using last 500 emails from cache
+        self.analyze_cadence()
+        
+        if progress_callback:
+            progress_callback(100, "Complete!", f"✅ Email sync complete from {from_date}")
         
         return sent_emails
     

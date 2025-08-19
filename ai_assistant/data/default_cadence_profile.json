@@ -1,0 +1,47 @@
+{
+  "profile_name": "Default Professional Cadence",
+  "description": "Standard professional communication style for collectors",
+  "analysis_date": "2025-08-18T16:55:46.379824",
+  "total_emails_analyzed": 500,
+  "total_emails_cached": 13169,
+  "average_frequency_days": 0.1,
+  "common_subject_words": [
+    "doi",
+    "prohealth",
+    "dob",
+    "request",
+    "lien",
+    "confirmation",
+    "file",
+    "patient",
+    "agreement",
+    "reduction"
+  ],
+  "style_patterns": {
+    "formal_language": 39.0,
+    "casual_language": 54.2,
+    "question_usage": 17.4,
+    "exclamation_usage": 0.8,
+    "average_length": 197.0
+  },
+  "greeting_patterns": [
+    "Hello, I hope this message finds you well",
+    "Hi Law Firm, In regards to Prohealth Advanced Imaging billing and liens for [Patient Name]",
+    "Hello Law Firm, In regards to Prohealth Advanced Imaging billing and liens for [Patient Name]",
+    "Dear Law Firm, In regards to Prohealth Advanced Imaging billing and liens for [Patient Name]",
+    "Hi, Apologies for such a delayed response"
+  ],
+  "closing_patterns": [
+    "Prohealth Billing and Liens Unit • Billing Specialist • Lien Representative P:(909) 342-7824 ext. 406 F:(909)-696-2939",
+    "Thank you for your attention to this matter.",
+    "Thank you for your attention to this matter.  Best regards,",
+    "Thank you.",
+    "Is this matter still open or has it been resolved? If you need any reports or billing, just let me know."
+  ],
+  "tone_indicators": {
+    "professional": 69.6,
+    "urgent": 0.8,
+    "friendly": 6.4,
+    "follow_up": 32.2
+  }
+}

@@ -143,8 +143,11 @@ python -m pip install PyQt5 --quiet --no-warn-script-location
 echo [7/8] Installing Web Browser...
 python -m pip install playwright --quiet --no-warn-script-location
 
-echo [8/8] Installing Security and Additional Components...
+echo [8/9] Installing Security and Additional Components...
 python -m pip install cryptography python-dotenv pytz requests email-validator --quiet --no-warn-script-location
+
+echo [9/9] Installing PyQt5 Tools...
+python -m pip install pyqt5-tools --quiet --no-warn-script-location
 
 echo.
 echo =====================================
@@ -178,40 +181,61 @@ if not exist "%APP_DIR%\START_PROGRAM.bat" (
     echo @echo off > "%APP_DIR%\START_PROGRAM.bat"
     echo title Medical Lien Assistant >> "%APP_DIR%\START_PROGRAM.bat"
     echo cd /d "%%~dp0" >> "%APP_DIR%\START_PROGRAM.bat"
-    echo python multi_user_launcher.py >> "%APP_DIR%\START_PROGRAM.bat"
+    echo python simple_launcher.py >> "%APP_DIR%\START_PROGRAM.bat"
     echo if errorlevel 1 pause >> "%APP_DIR%\START_PROGRAM.bat"
 )
 
-:: Create desktop shortcut using PowerShell
-powershell -Command "& {
-    $WshShell = New-Object -ComObject WScript.Shell
-    $Shortcut = $WshShell.CreateShortcut('%DESKTOP%\Medical Lien Assistant.lnk')
-    $Shortcut.TargetPath = '%APP_DIR%\START_PROGRAM.bat'
-    $Shortcut.WorkingDirectory = '%APP_DIR%'
-    $Shortcut.IconLocation = '%SystemRoot%\System32\SHELL32.dll,13'
-    $Shortcut.Description = 'Medical Lien Assistant'
-    $Shortcut.Save()
-}"
+:: Create desktop shortcuts using VBScript (more reliable)
+echo Creating desktop shortcuts...
 
-if exist "%DESKTOP%\Medical Lien Assistant.lnk" (
+:: Create VBScript for shortcuts
+(
+echo Set WshShell = CreateObject("WScript.Shell"^^)
+echo DesktopPath = WshShell.SpecialFolders("Desktop"^^)
+echo Set oShellLink = WshShell.CreateShortcut(DesktopPath ^& "\Medical Lien Assistant.lnk"^^)
+echo oShellLink.TargetPath = "%APP_DIR%\START_PROGRAM.bat"
+echo oShellLink.WindowStyle = 1
+echo oShellLink.IconLocation = "%SystemRoot%\System32\SHELL32.dll, 24"
+echo oShellLink.Description = "Medical Lien Assistant"
+echo oShellLink.WorkingDirectory = "%APP_DIR%"
+echo oShellLink.Save
+) > "%TEMP%\CreateShortcut.vbs"
+
+:: Run the VBScript
+cscript //nologo "%TEMP%\CreateShortcut.vbs" >nul 2>&1
+if %errorlevel% equ 0 (
     echo [OK] Desktop shortcut created
 ) else (
-    echo [INFO] Shortcut creation skipped
+    echo [INFO] Could not create shortcut automatically
+)
+
+:: Clean up
+del "%TEMP%\CreateShortcut.vbs" >nul 2>&1
+
+:: Also copy the CREATE_SHORTCUTS.bat for manual use
+if not exist "CREATE_SHORTCUTS.bat" (
+    echo [INFO] Run CREATE_SHORTCUTS.bat to create desktop shortcuts manually
 )
 
 :: Create Start Menu shortcut
-set "STARTMENU=%APPDATA%\Microsoft\Windows\Start Menu\Programs"
-powershell -Command "& {
-    $WshShell = New-Object -ComObject WScript.Shell
-    $Shortcut = $WshShell.CreateShortcut('%STARTMENU%\Medical Lien Assistant.lnk')
-    $Shortcut.TargetPath = '%APP_DIR%\START_PROGRAM.bat'
-    $Shortcut.WorkingDirectory = '%APP_DIR%'
-    $Shortcut.IconLocation = '%SystemRoot%\System32\SHELL32.dll,13'
-    $Shortcut.Description = 'Medical Lien Assistant'
-    $Shortcut.Save()
+echo Creating Start Menu shortcut...
+powershell -ExecutionPolicy Bypass -Command "& {
+    try {
+        $WshShell = New-Object -ComObject WScript.Shell
+        $StartMenuPath = [Environment]::GetFolderPath('Programs')
+        $ShortcutPath = Join-Path $StartMenuPath 'Medical Lien Assistant.lnk'
+        $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
+        $Shortcut.TargetPath = '%APP_DIR%\START_PROGRAM.bat'
+        $Shortcut.WorkingDirectory = '%APP_DIR%'
+        $Shortcut.IconLocation = '%SystemRoot%\System32\SHELL32.dll,24'
+        $Shortcut.Description = 'Medical Lien Assistant - Case Management System'
+        $Shortcut.WindowStyle = 7
+        $Shortcut.Save()
+        Write-Host '[OK] Start Menu shortcut created successfully' -ForegroundColor Green
+    } catch {
+        Write-Host '[INFO] Start Menu shortcut creation optional' -ForegroundColor Yellow
+    }
 }"
-
-echo [OK] Start Menu shortcut created
 echo.
 
 :: Check for required files
@@ -222,8 +246,8 @@ echo.
 
 set "MISSING_FILES="
 
-if not exist "%APP_DIR%\multi_user_launcher.py" (
-    echo [ERROR] Missing: multi_user_launcher.py
+if not exist "%APP_DIR%\simple_launcher.py" (
+    echo [ERROR] Missing: simple_launcher.py
     set "MISSING_FILES=1"
 )
 
@@ -249,6 +273,16 @@ if defined MISSING_FILES (
 echo [OK] All program files found
 echo.
 
+:: Create necessary directories
+echo Creating data directories...
+if not exist "%APP_DIR%\data" mkdir "%APP_DIR%\data"
+if not exist "%APP_DIR%\logs" mkdir "%APP_DIR%\logs"
+if not exist "%APP_DIR%\logs\errors" mkdir "%APP_DIR%\logs\errors"
+if not exist "%APP_DIR%\data\user_settings" mkdir "%APP_DIR%\data\user_settings"
+if not exist "%APP_DIR%\data\user_spreadsheets" mkdir "%APP_DIR%\data\user_spreadsheets"
+echo [OK] Data directories created
+echo.
+
 :: Setup complete
 cls
 color 0A
@@ -262,7 +296,8 @@ echo.
 echo TO START THE PROGRAM:
 echo ------------------
 echo Option 1: Double-click "Medical Lien Assistant" on your Desktop
-echo Option 2: Click START_PROGRAM.bat in this folder
+echo Option 2: Click START_PROGRAM.bat (runs without console)
+echo Option 3: Click START_WITH_CONSOLE.bat (shows debug log)
 echo.
 echo FIRST TIME SETUP:
 echo ----------------
@@ -286,12 +321,28 @@ echo    - Click "Test Connection"
 echo.
 echo =====================================
 echo.
+
+:: Run verification
+echo Running installation verification...
+echo.
+call VERIFY_INSTALLATION.bat 2>nul
+if %errorlevel% neq 0 (
+    echo [INFO] Verification check completed with warnings
+)
+
+echo.
 echo Press any key to start the program now...
 pause >nul
 
 :: Start the program
 echo.
 echo Starting Medical Lien Assistant...
-start "" "%APP_DIR%\START_PROGRAM.bat"
+:: Use pythonw directly to avoid showing any console
+start "" pythonw "%APP_DIR%\simple_launcher.py"
+
+:: If pythonw fails, fall back to the batch file
+if %errorlevel% neq 0 (
+    start "" "%APP_DIR%\START_PROGRAM.bat"
+)
 
 exit

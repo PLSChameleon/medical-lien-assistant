@@ -14,11 +14,11 @@ from pathlib import Path
 import pytz
 import shutil
 from PyQt5.QtWidgets import *
-from PyQt5.QtWidgets import QFileDialog, QInputDialog
+from PyQt5.QtWidgets import QFileDialog, QInputDialog, QDateEdit
 from PyQt5.QtCore import *
+from PyQt5.QtCore import QTimer, QThread, QDate
 from PyQt5.QtGui import *
 from PyQt5.QtGui import QColor
-from PyQt5.QtCore import QTimer, QThread
 
 # Add project root to Python path
 project_root = os.path.dirname(os.path.abspath(__file__))
@@ -2748,6 +2748,45 @@ class EnhancedMainWindow(QMainWindow):
         
         auto_group.setLayout(auto_layout)
         
+        # Email Cadence Settings
+        cadence_group = QGroupBox("Email Cadence Profile")
+        cadence_layout = QVBoxLayout()
+        
+        cadence_info = QLabel(
+            "Choose which email cadence profile to use for drafting emails.\n"
+            "Your personal cadence is based on your email history."
+        )
+        cadence_info.setWordWrap(True)
+        cadence_layout.addWidget(cadence_info)
+        
+        # Radio buttons for cadence selection
+        self.personal_cadence_radio = QRadioButton("Use my personal email cadence")
+        self.default_cadence_radio = QRadioButton("Use default professional cadence (standard/mellow)")
+        
+        # Set initial selection based on current profile
+        if hasattr(self, 'email_cache_service') and self.email_cache_service:
+            current_profile = self.email_cache_service.get_cadence_profile_name()
+            if current_profile == 'default':
+                self.default_cadence_radio.setChecked(True)
+            else:
+                self.personal_cadence_radio.setChecked(True)
+        else:
+            self.personal_cadence_radio.setChecked(True)
+        
+        # Connect radio buttons to handler
+        self.personal_cadence_radio.toggled.connect(self.on_cadence_profile_changed)
+        self.default_cadence_radio.toggled.connect(self.on_cadence_profile_changed)
+        
+        cadence_layout.addWidget(self.personal_cadence_radio)
+        cadence_layout.addWidget(self.default_cadence_radio)
+        
+        # Add view button to see cadence details
+        view_cadence_btn = QPushButton("📊 View Cadence Details")
+        view_cadence_btn.clicked.connect(self.show_cadence_details)
+        cadence_layout.addWidget(view_cadence_btn)
+        
+        cadence_group.setLayout(cadence_layout)
+        
         # Save button
         save_btn = QPushButton("💾 Save Settings")
         save_btn.clicked.connect(self.save_settings)
@@ -2755,6 +2794,7 @@ class EnhancedMainWindow(QMainWindow):
         layout.addWidget(api_group)
         layout.addWidget(display_group)
         layout.addWidget(auto_group)
+        layout.addWidget(cadence_group)
         layout.addWidget(save_btn)
         layout.addStretch()
         
@@ -3818,28 +3858,107 @@ Case Aging:
             QMessageBox.critical(self, "Error", f"Failed to start refresh: {str(e)}")
     
     def bootstrap_emails(self):
-        """Bootstrap all emails"""
+        """Bootstrap all emails with download options"""
         if not self.email_cache_service:
             QMessageBox.warning(self, "Service Unavailable", "Email cache service not available.")
             return
         
-        reply = QMessageBox.question(
-            self, "Download Email History",
-            "This will download ALL emails (sent & received) and may take 10-30 minutes.\nThis creates a local cache for faster operations.\nProceed?",
-            QMessageBox.Yes | QMessageBox.No
-        )
+        # Create custom dialog for email download options
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Download Email History")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(400)
         
-        if reply == QMessageBox.Yes:
+        layout = QVBoxLayout()
+        
+        # Add instruction label
+        instruction_label = QLabel(
+            "Choose how you want to download your email history:\n\n"
+            "This creates a local cache for faster operations and may take 10-30 minutes."
+        )
+        instruction_label.setWordWrap(True)
+        layout.addWidget(instruction_label)
+        
+        # Add separator
+        layout.addWidget(QFrame())
+        
+        # Option 1: Full download
+        full_radio = QRadioButton("Download entire email history")
+        full_radio.setChecked(True)
+        full_desc = QLabel("   Downloads ALL emails from the beginning of time")
+        full_desc.setStyleSheet("color: gray; margin-left: 20px;")
+        
+        # Option 2: From date
+        date_radio = QRadioButton("Download from specific date")
+        date_desc = QLabel("   Only download emails from a selected date forward")
+        date_desc.setStyleSheet("color: gray; margin-left: 20px;")
+        
+        # Date selector (initially disabled)
+        date_layout = QHBoxLayout()
+        date_label = QLabel("   Start date:")
+        date_selector = QDateEdit()
+        date_selector.setCalendarPopup(True)
+        date_selector.setDate(QDate.currentDate().addMonths(-6))  # Default to 6 months ago
+        date_selector.setDisplayFormat("yyyy-MM-dd")
+        date_selector.setEnabled(False)
+        date_layout.addWidget(date_label)
+        date_layout.addWidget(date_selector)
+        date_layout.addStretch()
+        
+        # Enable/disable date selector based on radio selection
+        date_radio.toggled.connect(date_selector.setEnabled)
+        
+        # Add all widgets
+        layout.addWidget(full_radio)
+        layout.addWidget(full_desc)
+        layout.addSpacing(10)
+        layout.addWidget(date_radio)
+        layout.addWidget(date_desc)
+        layout.addLayout(date_layout)
+        layout.addSpacing(20)
+        
+        # Add buttons
+        button_layout = QHBoxLayout()
+        cancel_btn = QPushButton("Cancel")
+        proceed_btn = QPushButton("Download")
+        proceed_btn.setDefault(True)
+        
+        button_layout.addStretch()
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(proceed_btn)
+        layout.addLayout(button_layout)
+        
+        dialog.setLayout(layout)
+        
+        # Connect buttons
+        cancel_btn.clicked.connect(dialog.reject)
+        proceed_btn.clicked.connect(dialog.accept)
+        
+        # Show dialog and get result
+        if dialog.exec_() == QDialog.Accepted:
             try:
+                # Determine download mode
+                from_date = None
+                if date_radio.isChecked():
+                    # Convert QDate to string format for Gmail API
+                    selected_date = date_selector.date()
+                    from_date = selected_date.toString("yyyy/MM/dd")
+                
                 # Create progress dialog
                 progress = ProgressManager(self)
-                progress.show_progress("Downloading Email History", 
-                                     "Downloading all emails (this may take 10-30 minutes)...", 
-                                     maximum=100, show_logs=True)
-                progress.log("🚀 Starting full email bootstrap")
+                if from_date:
+                    progress.show_progress("Downloading Email History", 
+                                         f"Downloading emails from {from_date} forward...", 
+                                         maximum=100, show_logs=True)
+                    progress.log(f"🚀 Starting email download from {from_date}")
+                else:
+                    progress.show_progress("Downloading Email History", 
+                                         "Downloading all emails (this may take 10-30 minutes)...", 
+                                         maximum=100, show_logs=True)
+                    progress.log("🚀 Starting full email bootstrap")
                 
-                # Create and start worker thread
-                self.email_worker = EmailCacheWorker(self.email_cache_service, 'bootstrap')
+                # Create and start worker thread with date parameter
+                self.email_worker = EmailCacheWorker(self.email_cache_service, 'bootstrap', from_date=from_date)
                 
                 # Connect signals
                 self.email_worker.progress_update.connect(
@@ -4147,6 +4266,128 @@ Case Aging:
         text, ok = QInputDialog.getText(self, "Draft Follow-up", "Enter PV#:")
         if ok and text:
             self.draft_followup_by_pv(text)
+    
+    def on_cadence_profile_changed(self):
+        """Handle cadence profile selection change"""
+        if not self.email_cache_service:
+            return
+        
+        if self.personal_cadence_radio.isChecked():
+            self.email_cache_service.set_cadence_profile('personal')
+            self.log_activity("Switched to personal email cadence profile")
+        else:
+            self.email_cache_service.set_cadence_profile('default')
+            self.log_activity("Switched to default professional cadence profile")
+    
+    def show_cadence_details(self):
+        """Show detailed view of the active cadence profile"""
+        if not self.email_cache_service:
+            QMessageBox.warning(self, "Not Available", "Email cache service is not available.")
+            return
+        
+        # Get the active cadence data
+        profile_name = self.email_cache_service.get_cadence_profile_name()
+        cadence_data = self.email_cache_service.get_active_cadence()
+        
+        if not cadence_data:
+            QMessageBox.information(self, "No Cadence Data", 
+                                   f"No cadence data available for {profile_name} profile.\n"
+                                   "Please download email history first.")
+            return
+        
+        # Create dialog to show cadence details
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Cadence Profile Details - {profile_name.title()}")
+        dialog.setModal(True)
+        dialog.setMinimumSize(600, 500)
+        
+        layout = QVBoxLayout()
+        
+        # Create text browser for details
+        details_browser = QTextBrowser()
+        details_browser.setOpenExternalLinks(False)
+        
+        # Format the cadence data
+        html_content = f"""
+        <h2>{'Personal' if profile_name == 'personal' else 'Default Professional'} Cadence Profile</h2>
+        
+        <h3>Analysis Summary</h3>
+        <ul>
+            <li><b>Total emails analyzed:</b> {cadence_data.get('total_emails_analyzed', 'N/A')}</li>
+            <li><b>Average frequency:</b> {cadence_data.get('average_frequency_days', 'N/A')} days</li>
+        </ul>
+        
+        <h3>Writing Style</h3>
+        <ul>
+        """
+        
+        style = cadence_data.get('style_patterns', {})
+        for key, value in style.items():
+            formatted_key = key.replace('_', ' ').title()
+            html_content += f"<li><b>{formatted_key}:</b> {value}{'%' if isinstance(value, (int, float)) and key != 'average_length' else ''}</li>"
+        
+        html_content += """
+        </ul>
+        
+        <h3>Tone Indicators</h3>
+        <ul>
+        """
+        
+        tone = cadence_data.get('tone_indicators', {})
+        for key, value in tone.items():
+            formatted_key = key.replace('_', ' ').title()
+            html_content += f"<li><b>{formatted_key}:</b> {value}%</li>"
+        
+        html_content += """
+        </ul>
+        
+        <h3>Common Subject Words</h3>
+        <p>
+        """
+        
+        subject_words = cadence_data.get('common_subject_words', [])[:10]
+        html_content += ", ".join(subject_words) if subject_words else "No data available"
+        
+        html_content += """
+        </p>
+        
+        <h3>Sample Greetings</h3>
+        <ul>
+        """
+        
+        greetings = cadence_data.get('greeting_patterns', [])[:3]
+        for greeting in greetings:
+            html_content += f"<li>{greeting}</li>"
+        
+        if not greetings:
+            html_content += "<li>No greeting patterns available</li>"
+        
+        html_content += """
+        </ul>
+        
+        <h3>Sample Closings</h3>
+        <ul>
+        """
+        
+        closings = cadence_data.get('closing_patterns', [])[:3]
+        for closing in closings:
+            html_content += f"<li>{closing[:100]}...</li>" if len(closing) > 100 else f"<li>{closing}</li>"
+        
+        if not closings:
+            html_content += "<li>No closing patterns available</li>"
+        
+        html_content += "</ul>"
+        
+        details_browser.setHtml(html_content)
+        layout.addWidget(details_browser)
+        
+        # Add close button
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        layout.addWidget(close_btn)
+        
+        dialog.setLayout(layout)
+        dialog.exec_()
     
     def show_about(self):
         """Show about dialog"""
