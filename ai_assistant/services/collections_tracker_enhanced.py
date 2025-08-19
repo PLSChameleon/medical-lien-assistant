@@ -389,9 +389,9 @@ class EnhancedCollectionsTracker:
         print(f"CCP 335.1 eligible (>2yr, no litigation): {ccp_335_1_eligible}")
         print("="*60)
     
-    def get_stale_cases(self, days_threshold=30):
-        """Get cases that haven't been contacted recently"""
-        stale_cases = {
+    def get_categorized_cases(self, days_threshold=30):
+        """Get cases categorized by contact status"""
+        categorized_cases = {
             "critical": [],        # Sent email, no response for 90+ days
             "high_priority": [],   # Sent email, no response for 60-89 days
             "no_response": [],     # Sent email, no response for 30-59 days
@@ -453,42 +453,42 @@ class EnhancedCollectionsTracker:
             
             # Only add to missing_doi if it contains '2099' (placeholder date)
             if '2099' in doi_str:
-                stale_cases['missing_doi'].append(case_summary)
+                categorized_cases['missing_doi'].append(case_summary)
             
             # Categorize based on email activity
             if case_data['sent_count'] == 0:
                 # Never contacted
-                stale_cases['never_contacted'].append(case_summary)
+                categorized_cases['never_contacted'].append(case_summary)
             elif case_data['response_count'] == 0:
                 # Sent emails but no responses - categorize by time
                 if days_since_sent is not None:
                     if days_since_sent >= 90:
-                        stale_cases['critical'].append(case_summary)
+                        categorized_cases['critical'].append(case_summary)
                     elif days_since_sent >= 60:
-                        stale_cases['high_priority'].append(case_summary)
+                        categorized_cases['high_priority'].append(case_summary)
                     elif days_since_sent >= 30:
                         # No response for 30-59 days
-                        stale_cases['no_response'].append(case_summary)
+                        categorized_cases['no_response'].append(case_summary)
                     else:
                         # Sent within last 30 days - new category
-                        stale_cases['recently_sent'].append(case_summary)
+                        categorized_cases['recently_sent'].append(case_summary)
                 else:
                     # No date info, put in recently_sent as it might be new
-                    stale_cases['recently_sent'].append(case_summary)
+                    categorized_cases['recently_sent'].append(case_summary)
             
             # Check for CCP 335.1 eligibility (use cached result from analyze_from_cache)
             if case_data.get('ccp_335_1_eligible', False):
                 # Don't add if already in another category
                 already_categorized = any(
                     any(c['pv'] == pv for c in cases)
-                    for cat, cases in stale_cases.items()
+                    for cat, cases in categorized_cases.items()
                     if cat != 'ccp_335_1'
                 )
                 if not already_categorized:
-                    stale_cases['ccp_335_1'].append(case_summary)
+                    categorized_cases['ccp_335_1'].append(case_summary)
                     logger.debug(f"Case {pv} added to CCP 335.1 category from cached analysis")
         
-        return stale_cases
+        return categorized_cases
     
     def get_case_history(self, pv):
         """Get complete email history for a case"""
@@ -516,22 +516,22 @@ class EnhancedCollectionsTracker:
             "activities": activities
         }
     
-    def get_comprehensive_stale_cases(self, case_manager, progress_callback=None):
-        """Get comprehensive stale case analysis with categories"""
+    def get_comprehensive_categorized_cases(self, case_manager, progress_callback=None):
+        """Get comprehensive case categorization analysis"""
         if progress_callback:
             progress_callback("Loading bootstrap data...", 10)
         
         # Reload tracking data from disk to get latest analysis results
         self.data = self._load_tracking_data()
         
-        # Get all stale cases categorized
-        stale_categories = self.get_stale_cases()
+        # Get all cases categorized
+        case_categories = self.get_categorized_cases()
         
         if progress_callback:
             progress_callback("Processing case categories...", 50)
         
         # Add balance information from case manager
-        for category, cases in stale_categories.items():
+        for category, cases in case_categories.items():
             for case in cases:
                 # Get case details from case manager
                 try:
@@ -565,21 +565,27 @@ class EnhancedCollectionsTracker:
             progress_callback("Analysis complete", 100)
         
         # Log summary
-        total_critical = len(stale_categories.get('critical', []))
-        total_high = len(stale_categories.get('high_priority', []))
-        total_followup = len(stale_categories.get('needs_follow_up', []))
-        total_never = len(stale_categories.get('never_contacted', []))
-        total_no_response = len(stale_categories.get('no_response', []))
-        total_ccp_335_1 = len(stale_categories.get('ccp_335_1', []))
+        total_critical = len(case_categories.get('critical', []))
+        total_high = len(case_categories.get('high_priority', []))
+        total_followup = len(case_categories.get('needs_follow_up', []))
+        total_never = len(case_categories.get('never_contacted', []))
+        total_no_response = len(case_categories.get('no_response', []))
+        total_ccp_335_1 = len(case_categories.get('ccp_335_1', []))
         
         logger.info(f"Stale case analysis complete - Critical: {total_critical}, High: {total_high}, Follow-up: {total_followup}, Never contacted: {total_never}, No response: {total_no_response}, CCP 335.1: {total_ccp_335_1}")
         
-        return stale_categories
+        return case_categories
     
-    def clear_stale_cache(self):
-        """Clear any cached stale case data to force refresh"""
+    def clear_category_cache(self):
+        """Clear any cached category data to force refresh"""
         # Since we don't have a separate cache, just log
-        logger.info("Stale cache cleared (will refresh on next analysis)")
+        logger.info("Category cache cleared (will refresh on next analysis)")
+        pass
+    
+    def invalidate_category_cache(self):
+        """Invalidate the category cache to force fresh analysis on next access"""
+        # Since we don't have a separate cache, just log
+        logger.info("Category cache invalidated")
         pass
     
     def mark_case_as_contacted(self, pv, is_sent=False, is_response=False):
@@ -624,14 +630,14 @@ class EnhancedCollectionsTracker:
             logger.error(f"Error marking case {pv} as contacted: {e}")
             return False
     
-    def get_stale_cases_by_category(self, case_manager, category, limit=100):
-        """Get specific stale case category for bulk email processing"""
-        stale_categories = self.get_comprehensive_stale_cases(case_manager)
+    def get_cases_by_category(self, case_manager, category, limit=100):
+        """Get specific case category for bulk email processing"""
+        case_categories = self.get_comprehensive_categorized_cases(case_manager)
         
-        if category not in stale_categories:
+        if category not in case_categories:
             return {"cases": [], "total": 0, "category": category}
         
-        cases = stale_categories[category]
+        cases = case_categories[category]
         
         return {
             "cases": cases[:limit] if limit else cases,
@@ -646,9 +652,9 @@ class EnhancedCollectionsTracker:
         
         # Case status breakdown
         status_counts = {}
-        stale_30_days = 0
-        stale_60_days = 0
-        stale_90_days = 0
+        aging_30_days = 0
+        aging_60_days = 0
+        aging_90_days = 0
         
         for case_pv, case_data in self.data.get("cases", {}).items():
             # Get current status
@@ -675,11 +681,11 @@ class EnhancedCollectionsTracker:
                     days_since = (datetime.now() - last_sent_date).days
                     
                     if days_since >= 30:
-                        stale_30_days += 1
+                        aging_30_days += 1
                     if days_since >= 60:
-                        stale_60_days += 1
+                        aging_60_days += 1
                     if days_since >= 90:
-                        stale_90_days += 1
+                        aging_90_days += 1
                 except Exception as e:
                     logger.debug(f"Error parsing date for case {case_pv}: {e}")
         
@@ -715,10 +721,31 @@ class EnhancedCollectionsTracker:
         return {
             "total_cases": total_cases,
             "status_breakdown": status_counts,
-            "stale_cases": {
-                "30_days": stale_30_days,
-                "60_days": stale_60_days,
-                "90_days": stale_90_days
+            "aging_cases": {
+                "30_days": aging_30_days,
+                "60_days": aging_60_days,
+                "90_days": aging_90_days
             },
             "top_responsive_firms": top_firms[:5]
         }
+    
+    # Compatibility methods for backward compatibility
+    def get_stale_cases(self, days_threshold=30):
+        """Backward compatibility wrapper"""
+        return self.get_categorized_cases(days_threshold)
+    
+    def get_comprehensive_stale_cases(self, case_manager, progress_callback=None):
+        """Backward compatibility wrapper"""
+        return self.get_comprehensive_categorized_cases(case_manager, progress_callback)
+    
+    def clear_stale_cache(self):
+        """Backward compatibility wrapper"""
+        return self.clear_category_cache()
+    
+    def get_stale_cases_by_category(self, case_manager, category, limit=100):
+        """Backward compatibility wrapper"""
+        return self.get_cases_by_category(case_manager, category, limit)
+    
+    def invalidate_stale_case_cache(self):
+        """Backward compatibility wrapper"""
+        return self.invalidate_category_cache()

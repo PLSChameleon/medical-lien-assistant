@@ -81,8 +81,8 @@ class WorkerThread(QThread):
             self.error.emit(str(e))
 
 
-class StaleCaseWidget(QWidget):
-    """Widget for displaying stale cases with categories"""
+class CategoriesWidget(QWidget):
+    """Widget for displaying cases organized by categories"""
     
     def __init__(self, collections_tracker, case_manager, parent=None):
         super().__init__(parent)
@@ -98,10 +98,10 @@ class StaleCaseWidget(QWidget):
         
         # Header with refresh button
         header_layout = QHBoxLayout()
-        header_layout.addWidget(QLabel("<h2>⏰ Stale Case Analysis</h2>"))
+        header_layout.addWidget(QLabel("<h2>📂 Case Categories</h2>"))
         header_layout.addStretch()
         
-        self.refresh_btn = QPushButton("🔄 Refresh Analysis")
+        self.refresh_btn = QPushButton("🔄 Refresh Categories")
         self.refresh_btn.clicked.connect(self.refresh_analysis)
         header_layout.addWidget(self.refresh_btn)
         
@@ -166,7 +166,7 @@ class StaleCaseWidget(QWidget):
         self.setLayout(layout)
     
     def create_category_widget(self, category, title):
-        """Create a widget for a specific stale case category"""
+        """Create a widget for a specific case category"""
         widget = QWidget()
         layout = QVBoxLayout()
         
@@ -206,19 +206,19 @@ class StaleCaseWidget(QWidget):
         return widget
     
     def refresh_analysis(self):
-        """Refresh the stale case analysis"""
+        """Refresh the case categories"""
         try:
             # Use enhanced progress with live logs
-            with ProgressContext(self.parent_window, "Refreshing Analysis", "Analyzing stale cases...", 
+            with ProgressContext(self.parent_window, "Refreshing Analysis", "Analyzing case categories...", 
                                pulse=False, maximum=100, show_logs=True) as progress:
                 
                 # Clear cache to force fresh analysis
                 progress.set_message("Clearing cache...")
-                progress.log("🗑️ Clearing stale case cache")
-                self.collections_tracker.clear_stale_cache()
+                progress.log("🗑️ Clearing category cache")
+                self.collections_tracker.clear_category_cache()
                 progress.process_events()
                 
-                # Get comprehensive stale cases with enhanced progress
+                # Get comprehensive case categories with enhanced progress
                 progress.log("🔍 Analyzing case activity patterns")
                 
                 def update_progress(msg, pct):
@@ -227,7 +227,7 @@ class StaleCaseWidget(QWidget):
                         progress.log(msg)
                     progress.process_events()
                 
-                stale_categories = self.collections_tracker.get_comprehensive_stale_cases(
+                case_categories = self.collections_tracker.get_comprehensive_categorized_cases(
                     self.case_manager,
                     progress_callback=update_progress
                 )
@@ -235,7 +235,7 @@ class StaleCaseWidget(QWidget):
                 # Store data for filtering
                 progress.update(60, "Processing case data...")
                 progress.log("📦 Processing case categories")
-                self.category_data = stale_categories
+                self.category_data = case_categories
                 progress.process_events()
                 
                 # Apply current filter and update tables
@@ -250,9 +250,9 @@ class StaleCaseWidget(QWidget):
                 self.update_stats()
                 
                 progress.update(100, "Analysis complete!")
-                progress.log("✅ Stale case analysis complete")
+                progress.log("✅ Category analysis complete")
             
-            QMessageBox.information(self, "Success", "Stale case analysis refreshed!")
+            QMessageBox.information(self, "Success", "Categories refreshed!")
             
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to refresh analysis: {str(e)}")
@@ -357,9 +357,9 @@ class StaleCaseWidget(QWidget):
             stats_text = f"""
             <b>📊 Collections Overview:</b><br>
             Total tracked cases: {dashboard['total_cases']}<br>
-            Cases 30+ days old: {dashboard['stale_cases']['30_days']}<br>
-            Cases 60+ days old: {dashboard['stale_cases']['60_days']}<br>
-            Cases 90+ days old: {dashboard['stale_cases']['90_days']}<br>
+            Cases 30+ days old: {dashboard.get('aging_cases', dashboard.get('stale_cases', {}))['30_days']}<br>
+            Cases 60+ days old: {dashboard.get('aging_cases', dashboard.get('stale_cases', {}))['60_days']}<br>
+            Cases 90+ days old: {dashboard.get('aging_cases', dashboard.get('stale_cases', {}))['90_days']}<br>
             CCP 335.1 eligible: {ccp_335_1_count}
             """
             
@@ -421,12 +421,12 @@ class StaleCaseWidget(QWidget):
         try:
             filepath, _ = QFileDialog.getSaveFileName(
                 self, f"Export {category} Cases", 
-                f"stale_cases_{category}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                f"category_{category}_{datetime.now().strftime('%Y%m%d')}.xlsx",
                 "Excel Files (*.xlsx)")
             
             if filepath:
                 # Get cases for this category
-                result = self.collections_tracker.get_stale_cases_by_category(
+                result = self.collections_tracker.get_cases_by_category(
                     self.case_manager, category, limit=None
                 )
                 cases = result["cases"]
@@ -2194,10 +2194,10 @@ class EnhancedMainWindow(QMainWindow):
         self.email_tab = self.create_email_analysis_tab()
         self.tabs.addTab(self.email_tab, "📧 Email Analysis")
         
-        # Stale Cases tab - use enhanced tracker if available, otherwise standard
+        # Categories tab - use enhanced tracker if available, otherwise standard
         tracker_to_use = self.enhanced_tracker if self.enhanced_tracker else self.collections_tracker
-        self.stale_cases_tab = StaleCaseWidget(tracker_to_use, self.case_manager, self)
-        self.tabs.addTab(self.stale_cases_tab, "⏰ Stale Cases")
+        self.categories_tab = CategoriesWidget(tracker_to_use, self.case_manager, self)
+        self.tabs.addTab(self.categories_tab, "📂 Categories")
         
         # Acknowledged Cases tab
         self.acknowledged_cases_tab = AcknowledgedCasesWidget(self.case_manager, self)
@@ -2398,19 +2398,19 @@ class EnhancedMainWindow(QMainWindow):
         )
         cards_layout.addWidget(total_cases_card)
         
-        # Stale cases card
+        # Categories card
         try:
             dashboard = self.collections_tracker.get_collections_dashboard()
-            stale_count = dashboard['stale_cases']['30_days']
+            aging_count = dashboard.get('aging_cases', dashboard.get('stale_cases', {}))['30_days']
         except:
-            stale_count = 0
+            aging_count = 0
         
-        stale_cases_card = self.create_stat_card(
-            "Stale Cases",
-            str(stale_count),
+        aging_cases_card = self.create_stat_card(
+            "Case Categories",
+            str(aging_count),
             "⏰"
         )
-        cards_layout.addWidget(stale_cases_card)
+        cards_layout.addWidget(aging_cases_card)
         
         # Emails today card
         emails_today_card = self.create_stat_card(
@@ -2440,8 +2440,8 @@ class EnhancedMainWindow(QMainWindow):
         btn_bulk = QPushButton("📨 Bulk Email")
         btn_bulk.clicked.connect(lambda: self.tabs.setCurrentWidget(self.bulk_email_tab) if hasattr(self, 'bulk_email_tab') else None)
         
-        btn_stale = QPushButton("⏰ View Stale Cases")
-        btn_stale.clicked.connect(lambda: self.tabs.setCurrentWidget(self.stale_cases_tab) if hasattr(self, 'stale_cases_tab') else None)
+        btn_stale = QPushButton("📂 View Categories")
+        btn_stale.clicked.connect(lambda: self.tabs.setCurrentWidget(self.categories_tab) if hasattr(self, 'categories_tab') else None)
         
         actions_layout.addWidget(btn_summarize, 0, 0)
         actions_layout.addWidget(btn_followup, 0, 1)
@@ -3300,9 +3300,9 @@ Case Status Breakdown:
             
             stats_text += f"""
 Case Aging:
-  30+ days: {dashboard['stale_cases']['30_days']} cases
-  60+ days: {dashboard['stale_cases']['60_days']} cases
-  90+ days: {dashboard['stale_cases']['90_days']} cases
+  30+ days: {dashboard.get('aging_cases', dashboard.get('stale_cases', {}))['30_days']} cases
+  60+ days: {dashboard.get('aging_cases', dashboard.get('stale_cases', {}))['60_days']} cases
+  90+ days: {dashboard.get('aging_cases', dashboard.get('stale_cases', {}))['90_days']} cases
 """
             
             self.collections_stats.setPlainText(stats_text)
@@ -3336,8 +3336,8 @@ Case Aging:
             stats_html = f"""
             <b>Quick Stats:</b><br>
             Total Cases: {len(self.case_manager.df)}<br>
-            Stale (30+ days): {dashboard['stale_cases']['30_days']}<br>
-            Critical (90+ days): {dashboard['stale_cases']['90_days']}<br>
+            No Response (30+ days): {dashboard.get('aging_cases', dashboard.get('stale_cases', {}))['30_days']}<br>
+            Critical (90+ days): {dashboard.get('aging_cases', dashboard.get('stale_cases', {}))['90_days']}<br>
             Pending CMS Notes: {pending_cms}<br>
             <br>
             <small>Updated: {datetime.now().strftime('%H:%M')}</small>
@@ -3528,7 +3528,7 @@ Case Aging:
                     log_sent_email(case['PV'], email_data['recipient'], "Follow-up reply", msg_id)
                     
                     # Invalidate cache
-                    self.collections_tracker.invalidate_stale_case_cache()
+                    self.collections_tracker.invalidate_category_cache()
                     
                     # Add CMS note
                     try:
@@ -3575,7 +3575,7 @@ Case Aging:
                     log_sent_email(case['PV'], email_data['recipient'], email_data['subject'], msg_id)
                     
                     # Invalidate cache
-                    self.collections_tracker.invalidate_stale_case_cache()
+                    self.collections_tracker.invalidate_category_cache()
                     
                     # Add CMS note
                     try:
@@ -3964,9 +3964,9 @@ Case Aging:
         if success:
             QMessageBox.information(self, "Success", "Collections analysis complete!")
             self.log_activity("Completed collections analysis from cache")
-            # Refresh stale cases view if visible
-            if hasattr(self, 'stale_cases_tab'):
-                self.stale_cases_tab.refresh_analysis()
+            # Refresh categories view if visible
+            if hasattr(self, 'categories_tab'):
+                self.categories_tab.refresh_analysis()
         else:
             QMessageBox.warning(self, "Warning", "Analysis completed with warnings. Check logs for details.")
     
@@ -3977,11 +3977,11 @@ Case Aging:
         self.log_activity(f"Collections analysis error: {error}")
     
     def clear_cache(self):
-        """Clear stale case cache"""
+        """Clear category cache"""
         try:
-            self.collections_tracker.clear_stale_cache()
+            self.collections_tracker.clear_category_cache()
             QMessageBox.information(self, "Success", "Cache cleared!")
-            self.log_activity("Cleared stale case cache")
+            self.log_activity("Cleared category cache")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to clear cache: {str(e)}")
     
@@ -4117,8 +4117,8 @@ Case Aging:
             self.update_quick_stats()
             self.update_cms_card()
             self.log_activity("Refreshed dashboard")
-        elif current_widget == self.stale_cases_tab:
-            self.stale_cases_tab.refresh_analysis()
+        elif current_widget == self.categories_tab:
+            self.categories_tab.refresh_analysis()
         elif current_widget == self.collections_tab:
             self.refresh_collections_dashboard()
         else:
@@ -4158,7 +4158,7 @@ Case Aging:
             "Features:\n"
             "• Comprehensive case management\n"
             "• AI-powered email analysis\n"
-            "• Stale case tracking with categories\n"
+            "• Case organization by categories\n"
             "• Bulk email processing\n"
             "• Collections dashboard\n"
             "• Dark mode support\n\n"
