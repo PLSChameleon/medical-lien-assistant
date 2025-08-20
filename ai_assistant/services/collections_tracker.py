@@ -658,9 +658,9 @@ class CollectionsTracker:
                 "activity_count": len(case_tracking.get("activities", []))
             }
             
-            # Add DOI to case data
+            # Add DOI and Status to case data
             case_data["doi"] = case_info.get("DOI", "")
-            case_data["doa"] = case_info.get("DOA", "")  # Date of Accident for CCP 335.1
+            case_data["status"] = case_info.get("Status", "")
             
             # Improved categorization logic
             has_bootstrap_data = len(case_tracking) > 0
@@ -706,24 +706,24 @@ class CollectionsTracker:
             if doi_value is None or str(doi_value).strip() == "" or str(doi_value).upper() == "NONE":
                 stale_categories["missing_doi"].append(case_data)
             
-            # Check for CCP 335.1 eligibility (cases over 2 years old) - check all cases
-            doa_value = case_data.get("doa")
-            if doa_value and str(doa_value).strip() != "" and str(doa_value).upper() != "NONE":
+            # Check for CCP 335.1 eligibility (DOI over 2 years old) - check all cases
+            doi_value = case_data.get("doi")
+            if doi_value and str(doi_value).strip() != "" and str(doi_value).upper() != "NONE":
                 try:
-                    # Parse DOA and check if over 2 years old
-                    doa_str = str(doa_value).strip()
+                    # Parse DOI and check if over 2 years old
+                    doi_str = str(doi_value).strip()
                     # Try different date formats
                     for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y", "%m/%d/%y", "%Y/%m/%d", "%d-%m-%Y"]:
                         try:
-                            doa_date = datetime.strptime(doa_str, fmt)
-                            years_since_accident = (datetime.now() - doa_date).days / 365.25
-                            if years_since_accident >= 2:
+                            doi_date = datetime.strptime(doi_str, fmt)
+                            years_since_injury = (datetime.now() - doi_date).days / 365.25
+                            if years_since_injury >= 2:
                                 stale_categories["ccp_335_1"].append(case_data)
                             break
                         except:
                             continue
                 except Exception as e:
-                    logger.debug(f"Could not parse DOA for case {pv}: {e}")
+                    logger.debug(f"Could not parse DOI for case {pv}: {e}")
         
         # Sort each category by priority (handle None values)
         for category in stale_categories.values():
