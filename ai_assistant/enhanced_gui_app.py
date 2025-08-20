@@ -227,8 +227,9 @@ class CategoriesWidget(QWidget):
                         progress.log(msg)
                     progress.process_events()
                 
-                case_categories = self.collections_tracker.get_comprehensive_categorized_cases(
+                case_categories = self.collections_tracker.get_comprehensive_stale_cases(
                     self.case_manager,
+                    exclude_acknowledged=True,
                     progress_callback=update_progress
                 )
                 
@@ -426,7 +427,7 @@ class CategoriesWidget(QWidget):
             
             if filepath:
                 # Get cases for this category
-                result = self.collections_tracker.get_cases_by_category(
+                result = self.collections_tracker.get_stale_cases_by_category(
                     self.case_manager, category, limit=None
                 )
                 cases = result["cases"]
@@ -515,8 +516,8 @@ class CategoriesWidget(QWidget):
                         QMessageBox.information(self, "Success", f"CCP 335.1 inquiry sent for {pv}")
                         
                         # Update the case as contacted
-                        if hasattr(self.collections_tracker, 'mark_case_as_contacted'):
-                            self.collections_tracker.mark_case_as_contacted(pv, is_sent=True)
+                        if hasattr(self.collections_tracker, 'mark_case_contacted'):
+                            self.collections_tracker.mark_case_contacted(pv, contact_type="email_sent")
                         
                         # Refresh the display
                         self.refresh_analysis()
@@ -3568,7 +3569,7 @@ Case Aging:
                     log_sent_email(case['PV'], email_data['recipient'], "Follow-up reply", msg_id)
                     
                     # Invalidate cache
-                    self.collections_tracker.invalidate_category_cache()
+                    self.collections_tracker.invalidate_stale_case_cache()
                     
                     # Add CMS note
                     try:
@@ -3615,7 +3616,7 @@ Case Aging:
                     log_sent_email(case['PV'], email_data['recipient'], email_data['subject'], msg_id)
                     
                     # Invalidate cache
-                    self.collections_tracker.invalidate_category_cache()
+                    self.collections_tracker.invalidate_stale_case_cache()
                     
                     # Add CMS note
                     try:
@@ -3774,7 +3775,8 @@ Case Aging:
                 if hasattr(self, 'collections_tracker'):
                     # Re-analyze with new spreadsheet data
                     logger.info("Re-analyzing collections with new spreadsheet")
-                    QTimer.singleShot(200, lambda: self.collections_tracker.track_all_emails())
+                    # Clear cache to force fresh analysis on next refresh
+                    QTimer.singleShot(200, lambda: self.collections_tracker.clear_stale_cache())
                     
                 # Refresh displays
                 self.load_all_cases()
