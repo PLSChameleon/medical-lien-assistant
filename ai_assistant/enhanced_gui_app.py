@@ -2122,8 +2122,10 @@ class EnhancedMainWindow(QMainWindow):
             self.collections_tracker = CollectionsTracker()
             logger.info("Initialized CollectionsTracker")
             
-            # Bootstrap the tracker with email cache if available
-            if self.email_cache_service and self.email_cache_service.cache.get('emails'):
+            # Bootstrap the tracker with email cache if available and not already done
+            if (self.email_cache_service and 
+                self.email_cache_service.cache.get('emails') and
+                len(self.collections_tracker.data.get("cases", {})) == 0):
                 try:
                     logger.info("Bootstrapping CollectionsTracker with email cache...")
                     self.collections_tracker.bootstrap_from_email_cache(
@@ -2133,6 +2135,8 @@ class EnhancedMainWindow(QMainWindow):
                     logger.info("CollectionsTracker bootstrapped successfully")
                 except Exception as e:
                     logger.warning(f"Could not bootstrap CollectionsTracker: {e}")
+            else:
+                logger.info("CollectionsTracker already has data, skipping bootstrap")
             
             # Initialize bulk email service with the collections tracker
             if self.gmail_service:

@@ -529,7 +529,12 @@ class CollectionsTracker:
             "needs_follow_up": [],    # 30+ days since last contact  
             "no_contact": [],         # Cases with no tracked contact
             "no_response": [],        # Cases with emails sent but no responses received
-            "missing_from_bootstrap": []  # Cases bootstrap missed - need backfill
+            "missing_from_bootstrap": [],  # Cases bootstrap missed - need backfill
+            # Additional categories for UI compatibility
+            "never_contacted": [],    # Alias for no_contact
+            "recently_sent": [],      # Sent within last 30 days
+            "missing_doi": [],        # Cases missing DOI
+            "ccp_335_1": []          # Cases over 2 years old eligible for CCP 335.1
         }
         
         # Track missing cases for backfill
@@ -671,6 +676,10 @@ class CollectionsTracker:
                 "activity_count": len(case_tracking.get("activities", []))
             }
             
+            # Add DOI to case data
+            case_data["doi"] = case_info.get("DOI", "")
+            case_data["doa"] = case_info.get("DOA", "")  # Date of Accident for CCP 335.1
+            
             # Improved categorization logic
             has_bootstrap_data = len(case_tracking) > 0
             has_activities = case_data["activity_count"] > 0
@@ -690,17 +699,43 @@ class CollectionsTracker:
                 elif days_since_contact >= 30:
                     # 30-59 days needs follow-up
                     stale_categories["needs_follow_up"].append(case_data)
-                elif case_data["activity_count"] > 0 and case_data["response_count"] == 0:
-                    # Less than 30 days but no responses
-                    stale_categories["no_response"].append(case_data)
-                # If recent contact (under 30 days) with responses, don't categorize as stale
+                elif days_since_contact < 30:
+                    # Recently sent (less than 30 days)
+                    stale_categories["recently_sent"].append(case_data)
+                    if case_data["response_count"] == 0:
+                        # Also add to no_response if no responses
+                        stale_categories["no_response"].append(case_data)
             elif has_bootstrap_data and has_activities:
                 # This should rarely happen now with activity fallback
                 logger.warning(f"Case {pv} has {has_activities} activities but no valid contact date - investigate data quality")
                 stale_categories["no_contact"].append(case_data)
+                stale_categories["never_contacted"].append(case_data)  # Add to never_contacted as well
             else:
                 # No bootstrap data or activities - truly never contacted
                 stale_categories["no_contact"].append(case_data)
+                stale_categories["never_contacted"].append(case_data)  # Add to never_contacted as well
+            
+            # Check for missing DOI
+            if not case_data.get("doi") or str(case_data["doi"]).strip() == "":
+                stale_categories["missing_doi"].append(case_data)
+            
+            # Check for CCP 335.1 eligibility (cases over 2 years old)
+            if case_data.get("doa"):
+                try:
+                    # Parse DOA and check if over 2 years old
+                    doa_str = str(case_data["doa"])
+                    # Try different date formats
+                    for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y"]:
+                        try:
+                            doa_date = datetime.strptime(doa_str, fmt)
+                            years_since_accident = (datetime.now() - doa_date).days / 365.25
+                            if years_since_accident >= 2:
+                                stale_categories["ccp_335_1"].append(case_data)
+                            break
+                        except:
+                            continue
+                except Exception as e:
+                    logger.debug(f"Could not parse DOA for case {pv}: {e}")
         
         # Sort each category by priority (handle None values)
         for category in stale_categories.values():
