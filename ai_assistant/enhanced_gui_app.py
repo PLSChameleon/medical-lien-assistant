@@ -215,7 +215,7 @@ class CategoriesWidget(QWidget):
                 # Clear cache to force fresh analysis
                 progress.set_message("Clearing cache...")
                 progress.log("🗑️ Clearing category cache")
-                self.collections_tracker.clear_category_cache()
+                self.collections_tracker.clear_stale_cache()
                 progress.process_events()
                 
                 # Get comprehensive case categories with enhanced progress
@@ -4098,7 +4098,7 @@ Case Aging:
     def clear_cache(self):
         """Clear category cache"""
         try:
-            self.collections_tracker.clear_category_cache()
+            self.collections_tracker.clear_stale_cache()
             QMessageBox.information(self, "Success", "Cache cleared!")
             self.log_activity("Cleared category cache")
         except Exception as e:
