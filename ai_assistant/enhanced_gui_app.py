@@ -231,6 +231,11 @@ class CategoriesWidget(QWidget):
                     progress_callback=update_progress
                 )
                 
+                # Debug logging to see what categories we got
+                logger.info(f"Categories returned: {case_categories.keys()}")
+                for cat_name, cat_cases in case_categories.items():
+                    logger.info(f"Category '{cat_name}': {len(cat_cases)} cases")
+                
                 # Store data for filtering
                 progress.update(60, "Processing case data...")
                 progress.log("📦 Processing case categories")

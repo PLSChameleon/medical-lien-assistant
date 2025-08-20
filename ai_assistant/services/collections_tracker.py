@@ -583,24 +583,6 @@ class CollectionsTracker:
             # Get bootstrap tracking data (if it exists)
             case_tracking = self.data["cases"].get(pv, {})
             
-            # HYBRID APPROACH: Handle missing bootstrap data
-            if not case_tracking:
-                # Case not found in bootstrap - add to missing category and log
-                missing_case_data = {
-                    "pv": pv,
-                    "name": case_info.get("Name", ""),
-                    "attorney_email": case_info.get("Attorney Email", ""),
-                    "law_firm": case_info.get("Law Firm", ""),
-                    "days_since_contact": None,
-                    "last_contact": None,
-                    "response_count": 0,
-                    "activity_count": 0,
-                    "reason": "No bootstrap data found"
-                }
-                stale_categories["missing_from_bootstrap"].append(missing_case_data)
-                missing_cases.append(pv)
-                continue  # Skip to next case - can't categorize without data
-            
             
             # Calculate days since contact with fallback to activities
             last_contact = case_tracking.get("last_contact")
@@ -714,18 +696,24 @@ class CollectionsTracker:
                 # No bootstrap data or activities - truly never contacted
                 stale_categories["no_contact"].append(case_data)
                 stale_categories["never_contacted"].append(case_data)  # Add to never_contacted as well
+                # Also add to missing_from_bootstrap for tracking
+                if not has_bootstrap_data:
+                    stale_categories["missing_from_bootstrap"].append(case_data)
+                    missing_cases.append(pv)
             
-            # Check for missing DOI
-            if not case_data.get("doi") or str(case_data["doi"]).strip() == "":
+            # Check for missing DOI - check for all cases regardless of contact status
+            doi_value = case_data.get("doi", "")
+            if doi_value is None or str(doi_value).strip() == "" or str(doi_value).upper() == "NONE":
                 stale_categories["missing_doi"].append(case_data)
             
-            # Check for CCP 335.1 eligibility (cases over 2 years old)
-            if case_data.get("doa"):
+            # Check for CCP 335.1 eligibility (cases over 2 years old) - check all cases
+            doa_value = case_data.get("doa")
+            if doa_value and str(doa_value).strip() != "" and str(doa_value).upper() != "NONE":
                 try:
                     # Parse DOA and check if over 2 years old
-                    doa_str = str(case_data["doa"])
+                    doa_str = str(doa_value).strip()
                     # Try different date formats
-                    for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y"]:
+                    for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y", "%m/%d/%y", "%Y/%m/%d", "%d-%m-%Y"]:
                         try:
                             doa_date = datetime.strptime(doa_str, fmt)
                             years_since_accident = (datetime.now() - doa_date).days / 365.25
@@ -740,6 +728,12 @@ class CollectionsTracker:
         # Sort each category by priority (handle None values)
         for category in stale_categories.values():
             category.sort(key=lambda x: x.get("days_since_contact") or 0, reverse=True)
+        
+        # Log category counts for debugging
+        logger.info("Category counts after analysis:")
+        for cat_name, cat_cases in stale_categories.items():
+            if len(cat_cases) > 0:
+                logger.info(f"  {cat_name}: {len(cat_cases)} cases")
         
         # Save missing cases log for backfill
         if missing_cases:
