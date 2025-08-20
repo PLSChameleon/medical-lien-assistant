@@ -53,10 +53,8 @@ except ImportError:
 # Setup logger
 logger = logging.getLogger(__name__)
 from case_manager import CaseManager
-try:
-    from services.collections_tracker_enhanced import EnhancedCollectionsTracker
-except ImportError:
-    EnhancedCollectionsTracker = None
+# EnhancedCollectionsTracker removed - using basic CollectionsTracker
+EnhancedCollectionsTracker = None
 
 
 class WorkerThread(QThread):
@@ -2120,32 +2118,29 @@ class EnhancedMainWindow(QMainWindow):
                 self.gmail_service.email_cache_service = self.email_cache_service
                 logger.info("Email auto-caching enabled for sent emails")
             
-            # Initialize enhanced tracker (used by both stale cases and bulk email)
-            self.enhanced_tracker = None
-            self.collections_tracker = None
-            if EnhancedCollectionsTracker and self.email_cache_service:
-                try:
-                    self.enhanced_tracker = EnhancedCollectionsTracker(self.email_cache_service)
-                    # Use enhanced tracker as the main collections tracker
-                    self.collections_tracker = self.enhanced_tracker
-                    logger.info("Using EnhancedCollectionsTracker for all services")
-                except Exception as e:
-                    print(f"Could not initialize enhanced tracker: {e}")
-                    # Fall back to basic tracker
-                    self.collections_tracker = CollectionsTracker()
-                    logger.info("Falling back to basic CollectionsTracker")
-            else:
-                # Fall back to basic tracker if enhanced not available
-                self.collections_tracker = CollectionsTracker()
-                logger.info("Using basic CollectionsTracker (enhanced not available)")
+            # Initialize collections tracker
+            self.collections_tracker = CollectionsTracker()
+            logger.info("Initialized CollectionsTracker")
             
-            # Initialize bulk email service with the appropriate tracker
+            # Bootstrap the tracker with email cache if available
+            if self.email_cache_service and self.email_cache_service.cache.get('emails'):
+                try:
+                    logger.info("Bootstrapping CollectionsTracker with email cache...")
+                    self.collections_tracker.bootstrap_from_email_cache(
+                        self.email_cache_service.cache,
+                        self.case_manager
+                    )
+                    logger.info("CollectionsTracker bootstrapped successfully")
+                except Exception as e:
+                    logger.warning(f"Could not bootstrap CollectionsTracker: {e}")
+            
+            # Initialize bulk email service with the collections tracker
             if self.gmail_service:
                 self.bulk_email_service = BulkEmailService(
                     self.gmail_service, 
                     self.case_manager, 
                     self.ai_service, 
-                    self.collections_tracker,  # This will now be the enhanced tracker
+                    self.collections_tracker,
                     self.email_cache_service
                 )
             else:
@@ -2196,7 +2191,7 @@ class EnhancedMainWindow(QMainWindow):
         self.tabs.addTab(self.email_tab, "📧 Email Analysis")
         
         # Categories tab - use enhanced tracker if available, otherwise standard
-        tracker_to_use = self.enhanced_tracker if self.enhanced_tracker else self.collections_tracker
+        tracker_to_use = self.collections_tracker
         self.categories_tab = CategoriesWidget(tracker_to_use, self.case_manager, self)
         self.tabs.addTab(self.categories_tab, "📂 Categories")
         
@@ -4017,8 +4012,8 @@ Case Aging:
         
         if reply == QMessageBox.Yes:
             try:
-                # Use enhanced tracker if available
-                if self.enhanced_tracker:
+                # Use collections tracker
+                if self.collections_tracker:
                     # Create progress manager
                     progress_manager = ProgressManager(self)
                     progress_manager.show_progress(
@@ -4029,7 +4024,7 @@ Case Aging:
                     
                     # Create worker thread
                     self.collections_worker = CollectionsAnalyzerWorker(
-                        self.enhanced_tracker,
+                        self.collections_tracker,
                         self.case_manager
                     )
                     
