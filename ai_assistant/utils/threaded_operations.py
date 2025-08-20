@@ -262,6 +262,16 @@ class CollectionsAnalyzerWorker(QThread):
                 )
                 
                 if result:
+                    self.progress_update.emit(90, "Finalizing categories...")
+                    
+                    # Force a comprehensive analysis with full email search after bootstrap
+                    # This ensures Never Contacted is accurate
+                    if hasattr(self.tracker, 'get_comprehensive_stale_cases'):
+                        self.tracker.get_comprehensive_stale_cases(
+                            self.case_manager,
+                            skip_email_search=False  # Do full email search for accuracy
+                        )
+                    
                     self.progress_update.emit(100, "Analysis complete!")
                     self.log_message.emit(f"✅ Analysis complete: {result.get('matched_activities', 0)} activities tracked")
                     self.finished.emit(True, result)

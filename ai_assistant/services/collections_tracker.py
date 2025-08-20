@@ -613,7 +613,7 @@ class CollectionsTracker:
             logger.error(f"Error parsing email date '{date_string}': {e}")
             return None
     
-    def get_comprehensive_stale_cases(self, case_manager, exclude_acknowledged=True, progress_callback=None):
+    def get_comprehensive_stale_cases(self, case_manager, exclude_acknowledged=True, progress_callback=None, skip_email_search=True):
         """
         Get comprehensive stale case analysis using cached bootstrap data - FAST!
         
@@ -621,6 +621,7 @@ class CollectionsTracker:
             case_manager: CaseManager instance
             exclude_acknowledged: Whether to filter out acknowledged cases
             progress_callback: Optional callback for progress updates (message, percentage)
+            skip_email_search: Skip searching email cache (use for refresh, False for full analyze)
         """
         # Check if we have cached stale analysis and it's recent (less than 1 hour old)
         if (hasattr(self, '_cached_stale_results') and 
@@ -786,89 +787,104 @@ class CollectionsTracker:
             case_data["doa"] = case_info.get("DOA", "")  # Date of Accident for CCP 335.1
             case_data["status"] = case_info.get("Status", "")
             
-            # ALWAYS check email cache directly for this case BY NAME
+            # Get patient name for logging/debugging (always needed)
+            patient_name = str(case_info.get("Name", "")).strip()
+            
+            # Check email cache only during full analyze, not refresh
             has_emails_in_cache = False
             sent_email_count = 0
             received_email_count = 0
             
-            # Get patient name and DOI for searching
-            patient_name = str(case_info.get("Name", "")).strip()
-            # Handle DOI as either string or datetime
-            doi_value = case_info.get("DOI", "")
-            if hasattr(doi_value, 'strftime'):
-                # It's a datetime object
-                patient_doi = doi_value.strftime("%m/%d/%Y")
+            # Skip expensive email search during refresh - use tracked data instead
+            if skip_email_search:
+                # Use existing tracked data for performance
+                if case_tracking.get("sent_count", 0) > 0:
+                    has_emails_in_cache = True
+                    sent_email_count = case_tracking.get("sent_count", 0)
+                    received_email_count = case_tracking.get("response_count", 0)
             else:
-                # It's a string or other type
-                patient_doi = str(doi_value).strip()
-            
-            if hasattr(self, 'email_cache') and self.email_cache and self.email_cache.cache.get('emails') and patient_name:
-                # Search email cache for this patient's NAME
-                import re
-                
-                # Create name patterns - handle different name formats
-                name_parts = patient_name.split()
-                if len(name_parts) >= 2:
-                    # Try various name combinations
-                    first_name = name_parts[0]
-                    last_name = name_parts[-1]
-                    
-                    # Patterns to search for
-                    name_patterns = [
-                        re.compile(rf'\b{re.escape(patient_name)}\b', re.IGNORECASE),  # Full name
-                        re.compile(rf'\b{re.escape(last_name)}\b.*\b{re.escape(first_name)}\b', re.IGNORECASE),  # Last, First
-                        re.compile(rf'\b{re.escape(first_name)}\b.*\b{re.escape(last_name)}\b', re.IGNORECASE),  # First Last
-                    ]
+                # Full email cache search (only during Analyze Email Cache)
+                # Handle DOI as either string or datetime
+                doi_value = case_info.get("DOI", "")
+                if hasattr(doi_value, 'strftime'):
+                    # It's a datetime object
+                    patient_doi = doi_value.strftime("%m/%d/%Y")
                 else:
-                    # Single name or complex name
-                    name_patterns = [
-                        re.compile(rf'\b{re.escape(patient_name)}\b', re.IGNORECASE)
-                    ]
+                    # It's a string or other type
+                    patient_doi = str(doi_value).strip()
                 
-                # Also search for PV as fallback (rare cases where it's included)
-                pv_pattern = re.compile(rf'\bpv[:\s]*{re.escape(pv)}\b', re.IGNORECASE)
-                
-                for email in self.email_cache.cache.get('emails', []):
-                    email_text = f"{email.get('subject', '')} {email.get('snippet', '')}"
+                if hasattr(self, 'email_cache') and self.email_cache and self.email_cache.cache.get('emails') and patient_name:
+                    # Search email cache for this patient's NAME
+                    import re
                     
-                    # Check if this email mentions this patient's name or PV
-                    case_found = False
-                    
-                    # First check for name
-                    for pattern in name_patterns:
-                        if pattern.search(email_text):
-                            # If DOI is available and there might be duplicates, verify DOI
-                            if patient_doi and 'doi' in email_text.lower():
-                                # Try to match DOI to disambiguate
-                                doi_parts = patient_doi.replace('-', '/').split('/')
-                                if len(doi_parts) >= 2:
-                                    # Check if DOI components appear in email
-                                    if any(part in email_text for part in doi_parts if len(part) > 2):
-                                        case_found = True
-                                        break
-                            else:
-                                # No DOI check needed or DOI not in email
-                                case_found = True
-                                break
-                    
-                    # Fallback to PV search
-                    if not case_found and pv_pattern.search(email_text):
-                        case_found = True
-                    
-                    if case_found:
-                        # Determine if sent or received
-                        from_field = str(email.get('from', '')).lower()
-                        to_field = str(email.get('to', '')).lower()
+                    # Create name patterns - handle different name formats
+                    name_parts = patient_name.split()
+                    if len(name_parts) >= 2:
+                        # Try various name combinations
+                        first_name = name_parts[0]
+                        last_name = name_parts[-1]
                         
-                        # Email is SENT if from Dean/Prohealth OR from "me"
-                        if (from_field == 'me' or 'dean' in from_field or 
-                            'prohealth' in from_field or 'deanh.transcon' in from_field):
-                            sent_email_count += 1
-                            has_emails_in_cache = True
-                        # Email is RECEIVED if to Dean
-                        elif 'dean' in to_field or 'deanh.transcon' in to_field:
-                            received_email_count += 1
-                            has_emails_in_cache = True
+                        # Patterns to search for
+                        name_patterns = [
+                            re.compile(rf'\b{re.escape(patient_name)}\b', re.IGNORECASE),  # Full name
+                            re.compile(rf'\b{re.escape(last_name)}\b.*\b{re.escape(first_name)}\b', re.IGNORECASE),  # Last, First
+                            re.compile(rf'\b{re.escape(first_name)}\b.*\b{re.escape(last_name)}\b', re.IGNORECASE),  # First Last
+                        ]
+                    else:
+                        # Single name or complex name
+                        name_patterns = [
+                            re.compile(rf'\b{re.escape(patient_name)}\b', re.IGNORECASE)
+                        ]
+                    
+                    # Also search for PV as fallback (rare cases where it's included)
+                    pv_pattern = re.compile(rf'\bpv[:\s]*{re.escape(pv)}\b', re.IGNORECASE)
+                    
+                    for email in self.email_cache.cache.get('emails', []):
+                        email_text = f"{email.get('subject', '')} {email.get('snippet', '')}"
+                        
+                        # Check if this email mentions this patient's name or PV
+                        case_found = False
+                        
+                        # First check for name
+                        for pattern in name_patterns:
+                            if pattern.search(email_text):
+                                # If DOI is available and there might be duplicates, verify DOI
+                                if patient_doi and 'doi' in email_text.lower():
+                                    # Try to match DOI to disambiguate
+                                    doi_parts = patient_doi.replace('-', '/').split('/')
+                                    if len(doi_parts) >= 2:
+                                        # Check if DOI components appear in email
+                                        if any(part in email_text for part in doi_parts if len(part) > 2):
+                                            case_found = True
+                                            break
+                                else:
+                                    # No DOI check needed or DOI not in email
+                                    case_found = True
+                                    break
+                        
+                        # Fallback to PV search
+                        if not case_found and pv_pattern.search(email_text):
+                            case_found = True
+                        
+                        if case_found:
+                            # Determine if sent or received
+                            from_field = str(email.get('from', '')).lower()
+                            to_field = str(email.get('to', '')).lower()
+                            
+                            # Email is SENT if from Dean/Prohealth OR from "me"
+                            if (from_field == 'me' or 'dean' in from_field or 
+                                'prohealth' in from_field or 'deanh.transcon' in from_field):
+                                sent_email_count += 1
+                                has_emails_in_cache = True
+                            # Email is RECEIVED if to Dean
+                            elif 'dean' in to_field or 'deanh.transcon' in to_field:
+                                received_email_count += 1
+                                has_emails_in_cache = True
+                    
+                    # Update tracked counts for next time
+                    if pv in self.data["cases"] and (sent_email_count > 0 or received_email_count > 0):
+                        self.data["cases"][pv]["sent_count"] = max(self.data["cases"][pv].get("sent_count", 0), sent_email_count)
+                        self.data["cases"][pv]["response_count"] = max(self.data["cases"][pv].get("response_count", 0), received_email_count)
             
             # Improved categorization logic
             has_bootstrap_data = len(case_tracking) > 0
@@ -1091,7 +1107,7 @@ class CollectionsTracker:
         Get specific stale case category quickly
         Categories: critical, high_priority, needs_follow_up, no_contact, no_response
         """
-        all_stale = self.get_comprehensive_stale_cases(case_manager)
+        all_stale = self.get_comprehensive_stale_cases(case_manager, skip_email_search=True)
         
         if category not in all_stale:
             return {"cases": [], "total": 0, "category": category}

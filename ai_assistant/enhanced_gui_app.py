@@ -233,7 +233,8 @@ class CategoriesWidget(QWidget):
                 case_categories = self.collections_tracker.get_comprehensive_stale_cases(
                     self.case_manager,
                     exclude_acknowledged=True,
-                    progress_callback=update_progress
+                    progress_callback=update_progress,
+                    skip_email_search=True  # Use cached data for fast refresh
                 )
                 
                 # Debug logging to see what categories we got

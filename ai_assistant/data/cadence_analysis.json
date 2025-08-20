@@ -1,45 +1,45 @@
 {
-  "analysis_date": "2025-08-18T16:55:46.379824",
+  "analysis_date": "2025-08-20T00:20:32.464627",
   "total_emails_analyzed": 500,
-  "total_emails_cached": 13169,
+  "total_emails_cached": 13199,
   "average_frequency_days": 0.1,
   "common_subject_words": [
     "doi",
     "prohealth",
     "dob",
+    "confirmation",
+    "patient",
+    "file",
+    "agreement",
     "request",
     "lien",
-    "confirmation",
-    "file",
-    "patient",
-    "agreement",
     "reduction"
   ],
   "style_patterns": {
-    "formal_language": 39.0,
-    "casual_language": 54.2,
-    "question_usage": 17.4,
-    "exclamation_usage": 0.8,
+    "formal_language": 36.2,
+    "casual_language": 58.4,
+    "question_usage": 35.4,
+    "exclamation_usage": 1.0,
     "average_length": 197.0
   },
   "greeting_patterns": [
-    "Hello, I hope this message finds you well",
-    "Hi Law Firm, In regards to Prohealth Advanced Imaging billing and liens for Jackeline Leon",
-    "Hello Law Firm, In regards to Prohealth Advanced Imaging billing and liens for Gabriela Arrazola",
-    "Dear Law Firm, In regards to Prohealth Advanced Imaging billing and liens for Vicenta Camacho",
-    "Hi, Apologies for such a delayed response"
+    "Hello Law Firm, In regards to Prohealth Advanced Imaging billing and liens for Rene Morales",
+    "Hi Law Firm, In regards to Prohealth Advanced Imaging billing and liens for Sheila Kaye Sing",
+    "Hello Law Firm, In regards to Prohealth Advanced Imaging billing and liens for Maria Caceres",
+    "Dear Law Firm, In regards to Prohealth Advanced Imaging billing and liens for Karapet Ordakyan",
+    "Hi Law Firm, In regards to Prohealth Advanced Imaging billing and liens for Juana Acosta"
   ],
   "closing_patterns": [
-    "Prohealth Billing and Liens Unit \u2022 Billing Specialist \u2022 Lien Representative P:(909) 342-7824 ext. 406 F:(909)-696-2939 On",
-    "Thank you for your attention to this matter.",
-    "Thank you for your attention to this matter.  Best regards,",
     "Thank you.",
-    "Is this matter still open or has it been resolved? If you need any reports or billing, just let me know."
+    "Prohealth Billing and Liens Unit \u2022 Billing Specialist \u2022 Lien Representative P:(909) 342-7824 ext. 406 F:(909)-696-2939 On Tue, Aug 19, 2025, 2:53",
+    "com&gt; wrote: Been back and forth on this file for a while.  They had asked to waive i told them I cannot and offered",
+    "Prohealth Billing and Liens Unit \u2022 Billing Specialist \u2022 Lien Representative P:(909) 342-7824 ext. 406 F:(",
+    "com -- Sincerely, Dean H.  Prohealth Billing and Liens Unit \u2022 Billing Specialist \u2022 Lien Representative"
   ],
   "tone_indicators": {
-    "professional": 69.6,
-    "urgent": 0.8,
-    "friendly": 6.4,
-    "follow_up": 32.2
+    "professional": 76.4,
+    "urgent": 0.6,
+    "friendly": 9.8,
+    "follow_up": 32.6
   }
 }
