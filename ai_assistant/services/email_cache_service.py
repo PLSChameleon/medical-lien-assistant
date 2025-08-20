@@ -444,7 +444,7 @@ class EmailCacheService:
                 "tone": "professional",
                 "style": "formal",
                 "greeting": "Dear [Name],",
-                "closing": "Best regards,\nDean Hyland\nProhealth Advanced Imaging"
+                "closing": "Thank you"
             }
         
         style = active_cadence.get('style_patterns', {})
@@ -495,14 +495,14 @@ class EmailCacheService:
         elif max_results:
             print(f"📥 Performing full sync: Downloading {max_results} emails...")
         else:
-            print(f"📥 Performing full sync: Downloading ALL emails (sent & received)...")
+            print(f"📥 Performing full sync: Downloading ALL emails in Gmail account...")
         
-        # Search for ALL emails (both sent and received)
-        # Using label:sent OR label:inbox to get both directions
-        query = "in:sent OR in:inbox"
+        # Search for ALL emails in the entire Gmail account
+        # Empty query gets everything including archived, labeled, etc.
+        query = ""  # Empty query gets ALL emails
         
         if progress:
-            progress.log("🔍 Searching Gmail: in:sent OR in:inbox")
+            progress.log("🔍 Searching Gmail: ALL emails (sent, received, archived, labeled)")
             progress.process_events()
             
         sent_emails = self.gmail_service.search_messages(query, max_results, progress=progress)
@@ -515,7 +515,7 @@ class EmailCacheService:
                 print(msg)
             return []
         
-        msg = f"✅ Found {len(sent_emails)} emails (sent & received)"
+        msg = f"✅ Found {len(sent_emails)} total emails"
         if progress:
             progress.log(msg)
             progress.process_events()
@@ -562,8 +562,8 @@ class EmailCacheService:
         # Convert datetime to Gmail query format (YYYY/MM/DD)
         after_date = last_sync.strftime('%Y/%m/%d')
         
-        # Build query for new emails (both sent and received) since last sync
-        query = f"(in:sent OR in:inbox) after:{after_date}"
+        # Build query for ALL new emails since last sync
+        query = f"after:{after_date}"  # Gets all emails after date
         
         msg = f"Checking for emails after {after_date} ({time_diff.days} days ago)"
         if progress:
@@ -849,7 +849,7 @@ class EmailCacheService:
         elif max_results:
             print(f"📥 Performing full sync: Downloading {max_results} emails...")
         else:
-            print(f"📥 Performing full sync: Downloading ALL emails (sent & received)...")
+            print(f"📥 Performing full sync: Downloading ALL emails in Gmail account...")
         
         # Search for ALL emails (both sent and received)
         query = "in:sent OR in:inbox"
@@ -868,7 +868,7 @@ class EmailCacheService:
                 print(msg)
             return []
         
-        msg = f"✅ Found {len(sent_emails)} emails (sent & received)"
+        msg = f"✅ Found {len(sent_emails)} total emails"
         if progress_callback:
             progress_callback(90, "Saving cache...", msg)
         else:
@@ -913,8 +913,8 @@ class EmailCacheService:
         else:
             print(f"📥 Performing sync: Downloading emails from {from_date} forward...")
         
-        # Build query for emails from specified date (both sent and received)
-        query = f"(in:sent OR in:inbox) after:{from_date}"
+        # Build query for ALL emails from specified date
+        query = f"after:{from_date}"  # Gets all emails after date
         
         if progress_callback:
             progress_callback(5, "Searching Gmail...", f"🔍 Query: {query}")
@@ -982,8 +982,8 @@ class EmailCacheService:
         # Convert datetime to Gmail query format (YYYY/MM/DD)
         after_date = last_sync.strftime('%Y/%m/%d')
         
-        # Build query for new emails (both sent and received) since last sync
-        query = f"(in:sent OR in:inbox) after:{after_date}"
+        # Build query for ALL new emails since last sync
+        query = f"after:{after_date}"  # Gets all emails after date
         
         msg = f"Checking for emails after {after_date} ({time_diff.days} days ago)"
         if progress_callback:

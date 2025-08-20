@@ -402,10 +402,18 @@ class BulkEmailService:
                             # Only check CCP 335.1 eligibility if explicitly requested
                             # This is a slow operation that checks email cache
                             if check_ccp_335_1:
-                                # Import here to avoid circular dependency
-                                from templates.ccp_335_1_template import is_ccp_335_1_eligible
-                                eligible = is_ccp_335_1_eligible(case_data, self.email_cache)
-                                if eligible:
+                                # Check CCP 335.1 eligibility
+                                # CCP 335.1: DOI > 2 years old AND no pending litigation
+                                status = str(case_data.get("status", "")).lower()
+                                
+                                # Check for litigation keywords that would EXCLUDE from CCP 335.1
+                                litigation_keywords = ['pending', 'litigation', 'prelitigation', 'pre-litigation', 
+                                                     'settled', 'settlement', 'litigating', 'suit', 'lawsuit']
+                                has_litigation_keyword = any(keyword in status for keyword in litigation_keywords)
+                                
+                                # Check if we have NOT heard from firm (would need collections tracker data)
+                                # For now, just check DOI age and status keywords
+                                if not has_litigation_keyword:
                                     categories["ccp_335_1"].append(case_data)
                                     logger.debug(f"Case {pv} added to CCP 335.1 category - DOI: {years_old:.1f} years old")
                     except Exception as e:
@@ -437,8 +445,27 @@ class BulkEmailService:
         try:
             # Check if this is a CCP 335.1 email
             if email_type == "ccp_335_1":
-                from templates.ccp_335_1_template import get_ccp_335_1_email
-                subject, body = get_ccp_335_1_email(case_data)
+                # Generate CCP 335.1 statute of limitations inquiry
+                subject = f"CCP 335.1 Statute of Limitations Inquiry - {case_data.get('name', 'Patient')} (PV: {case_data.get('pv', '')})"
+                
+                doi = case_data.get('doi', '')
+                body = f"""Dear Counsel,
+
+I am writing to inquire about the current status of the above-referenced case.
+
+Our records indicate that the date of injury for this matter was {doi}, which is now over two years ago. Under California Code of Civil Procedure Section 335.1, the statute of limitations for personal injury claims is generally two years from the date of injury.
+
+Could you please provide an update on:
+1. Whether litigation has been filed in this matter
+2. The current status of any settlement negotiations
+3. Whether there are any tolling agreements or other factors that would extend the statute of limitations
+
+We need this information to properly manage our lien and determine next steps. If the statute of limitations has expired without litigation being filed, please advise how you intend to proceed with this matter.
+
+Please respond at your earliest convenience so we can update our records accordingly.
+
+Thank you for your attention to this matter.
+"""
                 
                 # Modify for test mode
                 original_to = case_data["attorney_email"]
@@ -527,12 +554,7 @@ In regards to Prohealth Advanced Imaging billing and liens for {name}.
 
 Thank you.
 
-Reference #: {pv}
-
-Best regards,
-Dean Hyland
-Prohealth Advanced Imaging
-(909) 219-6008"""
+Reference #: {pv}"""
             
             return {
                 "pv": pv,

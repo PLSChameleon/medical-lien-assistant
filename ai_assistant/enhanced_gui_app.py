@@ -206,6 +206,11 @@ class CategoriesWidget(QWidget):
     def refresh_analysis(self):
         """Refresh the case categories"""
         try:
+            # Ensure email cache is set on tracker if available
+            if hasattr(self.parent_window, 'email_cache_service'):
+                if not hasattr(self.collections_tracker, 'email_cache'):
+                    self.collections_tracker.email_cache = self.parent_window.email_cache_service
+                    
             # Use enhanced progress with live logs
             with ProgressContext(self.parent_window, "Refreshing Analysis", "Analyzing case categories...", 
                                pulse=False, maximum=100, show_logs=True) as progress:
@@ -469,10 +474,7 @@ class CategoriesWidget(QWidget):
                 QMessageBox.warning(self, "Case Not Found", f"Could not find case {pv}")
                 return
             
-            # Import CCP 335.1 template
-            from templates.ccp_335_1_template import get_ccp_335_1_email
-            
-            # Prepare case data for template
+            # Prepare case data
             ccp_case_data = {
                 'pv': pv,
                 'name': case.get('Name', 'Unknown'),
@@ -481,8 +483,27 @@ class CategoriesWidget(QWidget):
                 'amount': case.get('Balance', '[AMOUNT]')
             }
             
-            # Generate email content
-            subject, body = get_ccp_335_1_email(ccp_case_data)
+            # Generate CCP 335.1 email content
+            doi = ccp_case_data.get('doi', '')
+            subject = f"CCP 335.1 Statute of Limitations Inquiry - {ccp_case_data.get('name', 'Patient')} (PV: {ccp_case_data.get('pv', '')})"
+            
+            body = f"""Dear Counsel,
+
+I am writing to inquire about the current status of the above-referenced case.
+
+Our records indicate that the date of injury for this matter was {doi}, which is now over two years ago. Under California Code of Civil Procedure Section 335.1, the statute of limitations for personal injury claims is generally two years from the date of injury.
+
+Could you please provide an update on:
+1. Whether litigation has been filed in this matter
+2. The current status of any settlement negotiations
+3. Whether there are any tolling agreements or other factors that would extend the statute of limitations
+
+We need this information to properly manage our lien and determine next steps. If the statute of limitations has expired without litigation being filed, please advise how you intend to proceed with this matter.
+
+Please respond at your earliest convenience so we can update our records accordingly.
+
+Thank you for your attention to this matter.
+"""
             
             # Get attorney email
             attorney_email = case.get('Attorney Email', '')
@@ -2127,21 +2148,16 @@ class EnhancedMainWindow(QMainWindow):
             self.collections_tracker = CollectionsTracker()
             logger.info("Initialized CollectionsTracker")
             
-            # Bootstrap the tracker with email cache if available and not already done
+            # Set email cache on tracker if available
+            if self.email_cache_service:
+                self.collections_tracker.email_cache = self.email_cache_service
+                logger.info("Email cache service linked to CollectionsTracker")
+            
+            # Don't auto-bootstrap on startup - user should run Analyze Email Cache
+            # This ensures ALL emails are processed, not just a subset
             if (self.email_cache_service and 
-                self.email_cache_service.cache.get('emails') and
                 len(self.collections_tracker.data.get("cases", {})) == 0):
-                try:
-                    logger.info("Bootstrapping CollectionsTracker with email cache...")
-                    # Limit to 300 most recent emails for faster startup
-                    self.collections_tracker.bootstrap_from_email_cache(
-                        self.email_cache_service.cache,
-                        self.case_manager,
-                        max_emails=300
-                    )
-                    logger.info("CollectionsTracker bootstrapped successfully")
-                except Exception as e:
-                    logger.warning(f"Could not bootstrap CollectionsTracker: {e}")
+                logger.info("No tracking data found - run 'Analyze Email Cache' to populate")
             else:
                 logger.info("CollectionsTracker already has data, skipping bootstrap")
             
@@ -4025,6 +4041,10 @@ Case Aging:
             try:
                 # Use collections tracker
                 if self.collections_tracker:
+                    # Set the email cache on the tracker if not already set
+                    if not hasattr(self.collections_tracker, 'email_cache'):
+                        self.collections_tracker.email_cache = self.email_cache_service
+                    
                     # Create progress manager
                     progress_manager = ProgressManager(self)
                     progress_manager.show_progress(

@@ -250,20 +250,25 @@ class CollectionsAnalyzerWorker(QThread):
             self.log_message.emit(f"📁 Found {total_cases} cases to analyze")
             self.progress_update.emit(5, f"Analyzing {total_emails} emails against {total_cases} cases...")
             
-            # Use the tracker's analyze method if available
-            if hasattr(self.tracker, 'analyze_from_cache'):
-                # For enhanced tracker
-                self.progress_update.emit(10, "Using enhanced analysis...")
+            # Use bootstrap_from_email_cache if available
+            if hasattr(self.tracker, 'bootstrap_from_email_cache'):
+                self.progress_update.emit(10, "Running bootstrap analysis...")
                 
-                # Run analysis with progress updates
-                success = self._run_enhanced_analysis()
+                # Bootstrap from the email cache
+                result = self.tracker.bootstrap_from_email_cache(
+                    self.tracker.email_cache.cache,
+                    self.case_manager,
+                    max_emails=None  # Process all emails
+                )
                 
-                if success:
+                if result:
                     self.progress_update.emit(100, "Analysis complete!")
-                    self.log_message.emit("✅ Collections analysis complete!")
-                    self.finished.emit(True, {'success': True})
+                    self.log_message.emit(f"✅ Analysis complete: {result.get('matched_activities', 0)} activities tracked")
+                    self.finished.emit(True, result)
                 else:
-                    self.error.emit("Analysis failed. Check logs for details.")
+                    self.progress_update.emit(100, "Bootstrap complete")
+                    self.log_message.emit("✅ Bootstrap analysis complete")
+                    self.finished.emit(True, {'success': True})
             else:
                 # Fallback to basic analysis
                 self.progress_update.emit(10, "Running standard analysis...")

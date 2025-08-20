@@ -75,22 +75,49 @@ class CollectionsTracker:
         self.data = self._load_tracking_data()
     
     def _load_tracking_data(self):
-        """Load tracking data from file"""
+        """Load tracking data and stale cache from file"""
         try:
             if os.path.exists(self.tracker_file):
                 with open(self.tracker_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
+                    data = json.load(f)
+                    
+                    # Load stale cache if it exists
+                    if 'stale_cache' in data:
+                        self._cached_stale_results = data['stale_cache']
+                        # Parse timestamp
+                        if data.get('stale_cache_timestamp'):
+                            try:
+                                self._cache_timestamp = datetime.fromisoformat(data['stale_cache_timestamp'])
+                                logger.info(f"Loaded stale cache from {self._cache_timestamp}")
+                            except:
+                                self._cache_timestamp = None
+                        # Remove cache from main data dict
+                        del data['stale_cache']
+                        if 'stale_cache_timestamp' in data:
+                            del data['stale_cache_timestamp']
+                    
+                    # Ensure firm_stats exists even if not in file
+                    if "firm_stats" not in data:
+                        data["firm_stats"] = {}
+                    return data
             return {"cases": {}, "firm_stats": {}}
         except Exception as e:
             logger.error(f"Error loading tracking data: {e}")
             return {"cases": {}, "firm_stats": {}}
     
     def _save_tracking_data(self):
-        """Save tracking data to file"""
+        """Save tracking data and stale cache to file"""
         try:
             os.makedirs(os.path.dirname(self.tracker_file), exist_ok=True)
+            
+            # Include stale cache if it exists
+            save_data = self.data.copy()
+            if hasattr(self, '_cached_stale_results') and self._cached_stale_results:
+                save_data['stale_cache'] = self._cached_stale_results
+                save_data['stale_cache_timestamp'] = self._cache_timestamp.isoformat() if self._cache_timestamp else None
+            
             with open(self.tracker_file, 'w', encoding='utf-8') as f:
-                json.dump(self.data, f, indent=2, default=str)
+                json.dump(save_data, f, indent=2, default=str)
         except Exception as e:
             logger.error(f"Error saving tracking data: {e}")
     
@@ -211,6 +238,10 @@ class CollectionsTracker:
     
     def update_firm_stats(self, firm_email, response_time_days=None, response_type=None):
         """Update statistics for a law firm"""
+        # Ensure firm_stats exists
+        if "firm_stats" not in self.data:
+            self.data["firm_stats"] = {}
+        
         if firm_email not in self.data["firm_stats"]:
             self.data["firm_stats"][firm_email] = {
                 "total_contacts": 0,
@@ -237,7 +268,11 @@ class CollectionsTracker:
     
     def get_firm_performance(self, firm_email):
         """Get performance stats for a firm"""
-        if firm_email not in self.data["firm_stats"]:
+        # Ensure firm_stats exists
+        if "firm_stats" not in self.data:
+            self.data["firm_stats"] = {}
+        
+        if firm_email not in self.data.get("firm_stats", {}):
             return {
                 "response_rate": 0,
                 "avg_response_time": 0,
@@ -308,7 +343,7 @@ class CollectionsTracker:
         
         # Top performing firms
         top_firms = []
-        for firm_email, stats in self.data["firm_stats"].items():
+        for firm_email, stats in self.data.get("firm_stats", {}).items():
             if stats["total_contacts"] >= 3:  # Only firms with decent contact history
                 response_rate = (stats["total_responses"] / stats["total_contacts"]) * 100
                 top_firms.append((firm_email, response_rate))
@@ -361,55 +396,133 @@ class CollectionsTracker:
         
         processed_count = 0
         matched_count = 0
+        matched_by_name = 0
+        matched_by_pv = 0
         
         # Analyze each sent email (limit to max_emails for performance)
-        emails_to_process = list(email_cache["emails"])[:max_emails]
+        if max_emails:
+            emails_to_process = list(email_cache["emails"])[:max_emails]
+        else:
+            emails_to_process = email_cache["emails"]  # Process ALL emails
         
-        for email in emails_to_process:
+        logger.info(f"Processing {len(emails_to_process)} emails...")
+        
+        for idx, email in enumerate(emails_to_process):
             try:
-                # Skip if not collections-related
+                # Log progress for large batches
+                if idx > 0 and idx % 1000 == 0:
+                    logger.info(f"Processed {idx}/{len(emails_to_process)} emails, found {matched_count} matches so far...")
+                
                 subject = email.get("subject", "").lower()
                 snippet = email.get("snippet", "").lower()
                 
-                if not self._is_collections_email(subject, snippet):
-                    continue
-                
+                # Don't skip any emails - process ALL to find ALL cases
                 processed_count += 1
                 
-                # Extract PV numbers from email
-                pv_numbers = self._extract_pv_numbers(subject + " " + snippet)
+                email_text = subject + " " + snippet
+                matched_pvs = set()  # Use set to avoid duplicates
                 
-                if not pv_numbers:
-                    # Try to match by patient name
-                    patient_names = self._extract_patient_names(subject + " " + snippet, case_data)
-                    if patient_names:
-                        # Find PV for this patient
-                        for pv, case_info in case_data.items():
-                            name = case_info.get("name", "")
-                            if name and name.lower() in patient_names:
-                                pv_numbers.append(pv)
-                                break
+                # FIRST: Try to match by patient NAME (primary method)
+                for pv, case_info in case_data.items():
+                    patient_name = str(case_info.get("name", "")).strip()
+                    # Handle DOI as either string or datetime
+                    doi_value = case_info.get("doi", "")
+                    if hasattr(doi_value, 'strftime'):
+                        # It's a datetime object
+                        patient_doi = doi_value.strftime("%m/%d/%Y")
+                    else:
+                        # It's a string or other type
+                        patient_doi = str(doi_value).strip()
+                    
+                    if not patient_name:
+                        continue
+                    
+                    # Check if patient name appears in email
+                    name_parts = patient_name.split()
+                    name_found = False
+                    
+                    if len(name_parts) >= 2:
+                        first_name = name_parts[0].lower()
+                        last_name = name_parts[-1].lower()
+                        
+                        # Check various name formats
+                        if (patient_name.lower() in email_text or 
+                            (first_name in email_text and last_name in email_text)):
+                            name_found = True
+                    else:
+                        # Single name
+                        if patient_name.lower() in email_text:
+                            name_found = True
+                    
+                    if name_found:
+                        # If multiple patients might have same name, check DOI
+                        if patient_doi and 'doi' in email_text:
+                            # Try to match DOI to disambiguate
+                            doi_parts = patient_doi.replace('-', '/').replace('.', '/').split('/')
+                            # Check if DOI components appear in email
+                            if any(part in email_text for part in doi_parts if len(part) >= 2 and part.isdigit()):
+                                matched_pvs.add(pv)
+                        else:
+                            # No DOI conflict or DOI not mentioned
+                            matched_pvs.add(pv)
+                
+                # Track if we matched by name
+                if matched_pvs:
+                    matched_by_name += len(matched_pvs)
+                
+                # SECOND: If no matches by name, try PV numbers as fallback
+                if not matched_pvs:
+                    pv_numbers = self._extract_pv_numbers(email_text)
+                    for pv in pv_numbers:
+                        if pv in case_data:
+                            matched_pvs.add(pv)
+                            matched_by_pv += 1
+                
+                # Determine if email is sent or received
+                from_field = str(email.get("from", "")).lower()
+                to_field = str(email.get("to", "")).lower()
+                
+                # Email is SENT if from Dean/Prohealth OR from "me" (Gmail's way of showing sent emails)
+                is_sent = (from_field == "me" or 
+                          'dean' in from_field or 
+                          'prohealth' in from_field or 
+                          'deanh.transcon' in from_field)
+                
+                # Email is RECEIVED if to Dean and not from Dean
+                is_received = not is_sent and ('dean' in to_field or 'deanh.transcon' in to_field)
                 
                 # Log activity for matched cases
-                for pv in pv_numbers:
+                for pv in matched_pvs:
                     if pv in case_data:
                         matched_count += 1
                         
                         # Parse email date
                         email_date = self._parse_email_date(email.get("date", ""))
                         
-                        # Log the email activity
-                        self.log_case_activity(
-                            case_pv=pv,
-                            activity_type="email_sent",
-                            details={
-                                "recipient_email": email.get("to", ""),
-                                "subject": email.get("subject", ""),
-                                "sent_date": email_date.isoformat() if email_date else None,
-                                "is_follow_up": "follow" in snippet or "following up" in snippet,
-                                "is_initial": "initial" in snippet or not ("follow" in snippet)
-                            }
-                        )
+                        if is_sent:
+                            # Log as sent email
+                            self.log_case_activity(
+                                case_pv=pv,
+                                activity_type="email_sent",
+                                details={
+                                    "recipient_email": email.get("to", ""),
+                                    "subject": email.get("subject", ""),
+                                    "sent_date": email_date.isoformat() if email_date else None,
+                                    "is_follow_up": "follow" in snippet or "following up" in snippet,
+                                    "is_initial": "initial" in snippet or not ("follow" in snippet)
+                                }
+                            )
+                        elif is_received:
+                            # Log as received email
+                            self.log_case_activity(
+                                case_pv=pv,
+                                activity_type="email_received",
+                                details={
+                                    "sender_email": email.get("from", ""),
+                                    "subject": email.get("subject", ""),
+                                    "received_date": email_date.isoformat() if email_date else None
+                                }
+                            )
                         
                         # Update last contact date to email date (not current time)
                         if pv in self.data["cases"]:
@@ -428,8 +541,10 @@ class CollectionsTracker:
         # Save the populated data
         self._save_tracking_data()
         
-        logger.info(f"Bootstrap complete: processed {processed_count} collections emails, matched {matched_count} to cases")
+        logger.info(f"Bootstrap complete: processed {processed_count} emails, matched {matched_count} activities (by name: {matched_by_name}, by PV: {matched_by_pv})")
         print(f"✅ Collections tracker populated with {matched_count} historical activities from {processed_count} emails")
+        print(f"   Matched by patient name: {matched_by_name}")
+        print(f"   Matched by PV number: {matched_by_pv}")
         
         return {
             "processed_emails": processed_count,
@@ -671,53 +786,152 @@ class CollectionsTracker:
             case_data["doa"] = case_info.get("DOA", "")  # Date of Accident for CCP 335.1
             case_data["status"] = case_info.get("Status", "")
             
+            # ALWAYS check email cache directly for this case BY NAME
+            has_emails_in_cache = False
+            sent_email_count = 0
+            received_email_count = 0
+            
+            # Get patient name and DOI for searching
+            patient_name = str(case_info.get("Name", "")).strip()
+            # Handle DOI as either string or datetime
+            doi_value = case_info.get("DOI", "")
+            if hasattr(doi_value, 'strftime'):
+                # It's a datetime object
+                patient_doi = doi_value.strftime("%m/%d/%Y")
+            else:
+                # It's a string or other type
+                patient_doi = str(doi_value).strip()
+            
+            if hasattr(self, 'email_cache') and self.email_cache and self.email_cache.cache.get('emails') and patient_name:
+                # Search email cache for this patient's NAME
+                import re
+                
+                # Create name patterns - handle different name formats
+                name_parts = patient_name.split()
+                if len(name_parts) >= 2:
+                    # Try various name combinations
+                    first_name = name_parts[0]
+                    last_name = name_parts[-1]
+                    
+                    # Patterns to search for
+                    name_patterns = [
+                        re.compile(rf'\b{re.escape(patient_name)}\b', re.IGNORECASE),  # Full name
+                        re.compile(rf'\b{re.escape(last_name)}\b.*\b{re.escape(first_name)}\b', re.IGNORECASE),  # Last, First
+                        re.compile(rf'\b{re.escape(first_name)}\b.*\b{re.escape(last_name)}\b', re.IGNORECASE),  # First Last
+                    ]
+                else:
+                    # Single name or complex name
+                    name_patterns = [
+                        re.compile(rf'\b{re.escape(patient_name)}\b', re.IGNORECASE)
+                    ]
+                
+                # Also search for PV as fallback (rare cases where it's included)
+                pv_pattern = re.compile(rf'\bpv[:\s]*{re.escape(pv)}\b', re.IGNORECASE)
+                
+                for email in self.email_cache.cache.get('emails', []):
+                    email_text = f"{email.get('subject', '')} {email.get('snippet', '')}"
+                    
+                    # Check if this email mentions this patient's name or PV
+                    case_found = False
+                    
+                    # First check for name
+                    for pattern in name_patterns:
+                        if pattern.search(email_text):
+                            # If DOI is available and there might be duplicates, verify DOI
+                            if patient_doi and 'doi' in email_text.lower():
+                                # Try to match DOI to disambiguate
+                                doi_parts = patient_doi.replace('-', '/').split('/')
+                                if len(doi_parts) >= 2:
+                                    # Check if DOI components appear in email
+                                    if any(part in email_text for part in doi_parts if len(part) > 2):
+                                        case_found = True
+                                        break
+                            else:
+                                # No DOI check needed or DOI not in email
+                                case_found = True
+                                break
+                    
+                    # Fallback to PV search
+                    if not case_found and pv_pattern.search(email_text):
+                        case_found = True
+                    
+                    if case_found:
+                        # Determine if sent or received
+                        from_field = str(email.get('from', '')).lower()
+                        to_field = str(email.get('to', '')).lower()
+                        
+                        # Email is SENT if from Dean/Prohealth OR from "me"
+                        if (from_field == 'me' or 'dean' in from_field or 
+                            'prohealth' in from_field or 'deanh.transcon' in from_field):
+                            sent_email_count += 1
+                            has_emails_in_cache = True
+                        # Email is RECEIVED if to Dean
+                        elif 'dean' in to_field or 'deanh.transcon' in to_field:
+                            received_email_count += 1
+                            has_emails_in_cache = True
+            
             # Improved categorization logic
             has_bootstrap_data = len(case_tracking) > 0
             has_activities = case_data["activity_count"] > 0
             has_valid_contact = days_since_contact is not None
             
-            # DEBUG for case 295187
-            if pv == "295187":
-                logger.info(f"DEBUG Case 295187 categorization: has_bootstrap_data={has_bootstrap_data}, has_activities={has_activities}, has_valid_contact={has_valid_contact}")
+            # DEBUG logging
+            if pv in ["295187", "300856", "246399"] or (sent_email_count > 0 and not has_activities):
+                logger.info(f"DEBUG Case {pv} ({patient_name}): bootstrap={has_bootstrap_data}, activities={has_activities}, valid_contact={has_valid_contact}, emails_in_cache={has_emails_in_cache}, sent={sent_email_count}, received={received_email_count}")
             
             if has_valid_contact:
-                # Categorize by urgency FIRST, then check for no response
+                # Critical: No email sent or received in over 90 days
                 if days_since_contact >= 90:
                     stale_categories["critical"].append(case_data)
+                # High Priority: No email sent or received in over 60 days
                 elif days_since_contact >= 60:
-                    # 60-89 days is high priority
                     stale_categories["high_priority"].append(case_data)
+                # Needs follow-up: 30-59 days since last contact
                 elif days_since_contact >= 30:
-                    # 30-59 days needs follow-up
                     stale_categories["needs_follow_up"].append(case_data)
+                # Recently sent: Emails sent within the last 30 days
                 elif days_since_contact < 30:
-                    # Recently sent (less than 30 days)
                     stale_categories["recently_sent"].append(case_data)
-                    if case_data["response_count"] == 0:
-                        # Also add to no_response if no responses
-                        stale_categories["no_response"].append(case_data)
-            elif has_bootstrap_data and has_activities:
-                # This should rarely happen now with activity fallback
-                logger.warning(f"Case {pv} has {has_activities} activities but no valid contact date - investigate data quality")
+                
+                # No Response: Email sent but no responses EVER received (separate check)
+                if case_data["response_count"] == 0 and (has_activities or sent_email_count > 0):
+                    stale_categories["no_response"].append(case_data)
+            elif has_activities or has_emails_in_cache:
+                # Has activities or emails but no valid contact date
+                # Put in no_contact but NOT never_contacted since we have evidence of contact
                 stale_categories["no_contact"].append(case_data)
-                stale_categories["never_contacted"].append(case_data)  # Add to never_contacted as well
+                
+                # If we sent emails but got no response, add to no_response
+                if case_data["response_count"] == 0 and (has_activities or sent_email_count > 0):
+                    stale_categories["no_response"].append(case_data)
             else:
-                # No bootstrap data or activities - truly never contacted
+                # No bootstrap data, no activities, AND no emails in cache - truly never contacted
                 stale_categories["no_contact"].append(case_data)
-                stale_categories["never_contacted"].append(case_data)  # Add to never_contacted as well
+                stale_categories["never_contacted"].append(case_data)
                 # Also add to missing_from_bootstrap for tracking
                 if not has_bootstrap_data:
                     stale_categories["missing_from_bootstrap"].append(case_data)
                     missing_cases.append(pv)
             
-            # Check for missing DOI - check for all cases regardless of contact status
+            # Check for missing DOI - specifically looking for 2099 year placeholder
             doi_value = case_data.get("doi", "")
-            if doi_value is None or str(doi_value).strip() == "" or str(doi_value).upper() == "NONE":
+            doi_str = str(doi_value).strip()
+            if "2099" in doi_str:
                 stale_categories["missing_doi"].append(case_data)
             
-            # Check for CCP 335.1 eligibility (DOI over 2 years old) - check all cases
+            # Check for CCP 335.1 eligibility (DOI over 2 years old AND no pending litigation)
             doi_value = case_data.get("doi")
-            if doi_value and str(doi_value).strip() != "" and str(doi_value).upper() != "NONE":
+            status = str(case_data.get("status", "")).lower()
+            
+            # Check if we have NOT heard back from firm (response_count == 0)
+            has_no_response = case_data.get("response_count", 0) == 0
+            
+            # Check for litigation keywords that would EXCLUDE from CCP 335.1
+            litigation_keywords = ['pending', 'litigation', 'prelitigation', 'pre-litigation', 
+                                 'settled', 'settlement', 'litigating', 'suit', 'lawsuit']
+            has_litigation_keyword = any(keyword in status for keyword in litigation_keywords)
+            
+            if doi_value and str(doi_value).strip() != "" and str(doi_value).upper() != "NONE" and "2099" not in str(doi_value):
                 try:
                     # Parse DOI and check if over 2 years old
                     doi_str = str(doi_value).strip()
@@ -726,7 +940,9 @@ class CollectionsTracker:
                         try:
                             doi_date = datetime.strptime(doi_str, fmt)
                             years_since_injury = (datetime.now() - doi_date).days / 365.25
-                            if years_since_injury >= 2:
+                            
+                            # CCP 335.1: DOI > 2 years old AND no response AND no litigation keywords
+                            if years_since_injury >= 2 and has_no_response and not has_litigation_keyword:
                                 stale_categories["ccp_335_1"].append(case_data)
                             break
                         except:
@@ -752,6 +968,10 @@ class CollectionsTracker:
         # Cache the results (before filtering acknowledged)
         self._cached_stale_results = stale_categories
         self._cache_timestamp = datetime.now()
+        
+        # Save to disk immediately so it persists
+        self._save_tracking_data()
+        logger.info("Saved category analysis to disk for persistence")
         
         # Filter acknowledged cases if requested
         if exclude_acknowledged:
