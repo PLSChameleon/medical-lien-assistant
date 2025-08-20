@@ -1,0 +1,1702 @@
+{
+  "cases": {
+    "321348": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.389705",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: BANA@BANALAW.COM] Rene Morales DOI 01/02/2023 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:40",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:03.672619",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: BANA@BANALAW.COM] Rene Morales DOI 01/02/2023 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:28",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:10.393670",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"Becky V. Casillas\" <bvc@banalaw.com>",
+            "subject": "Re: RENE MORALES DOI 01-02-2023 // Prohealth",
+            "sent_date": "2025-06-13T12:10:27-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:10.610218",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Dean H <deanh.transcon@gmail.com>",
+            "subject": "RE: RENE MORALES DOI 01-02-2023 // Prohealth",
+            "sent_date": "2025-06-12T13:29:49+00:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:10.772978",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"Becky V. Casillas\" <bvc@banalaw.com>",
+            "subject": "Re: RENE MORALES DOI 01-02-2023 // Prohealth",
+            "sent_date": "2025-06-11T19:41:55-07:00",
+            "is_follow_up": true,
+            "is_initial": false
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:18.519966",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"Becky V. Casillas\" <bvc@banalaw.com>",
+            "subject": "Re: RENE MORALES DOI 01-02-2023 // Prohealth",
+            "sent_date": "2025-05-31T21:06:56-07:00",
+            "is_follow_up": true,
+            "is_initial": false
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:39.921890",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"Becky V. Casillas\" <bvc@banalaw.com>",
+            "subject": "Re: RENE MORALES DOI 01-02-2023 // Prohealth",
+            "sent_date": "2025-04-02T13:53:07-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:40.104259",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Dean H <deanh.transcon@gmail.com>",
+            "subject": "RE: RENE MORALES DOI 01-02-2023 // Prohealth",
+            "sent_date": "2025-04-02T13:31:44+00:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:46.533489",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: BANA@BANALAW.COM] Rene Morales DOI 01/02/2023 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:40",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:52.983924",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: BANA@BANALAW.COM] Rene Morales DOI 01/02/2023 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:28",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:46:40.136432",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"Becky V. Casillas\" <bvc@banalaw.com>",
+            "subject": "Re: RENE MORALES DOI 01-02-2023 // Prohealth",
+            "sent_date": "2025-06-13T12:10:27-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:46:41.109007",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Dean H <deanh.transcon@gmail.com>",
+            "subject": "RE: RENE MORALES DOI 01-02-2023 // Prohealth",
+            "sent_date": "2025-06-12T13:29:49+00:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:46:42.165602",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"Becky V. Casillas\" <bvc@banalaw.com>",
+            "subject": "Re: RENE MORALES DOI 01-02-2023 // Prohealth",
+            "sent_date": "2025-06-11T19:41:55-07:00",
+            "is_follow_up": true,
+            "is_initial": false
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:47:12.216890",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"Becky V. Casillas\" <bvc@banalaw.com>",
+            "subject": "Re: RENE MORALES DOI 01-02-2023 // Prohealth",
+            "sent_date": "2025-05-31T21:06:56-07:00",
+            "is_follow_up": true,
+            "is_initial": false
+          }
+        }
+      ],
+      "current_status": "unknown",
+      "last_contact": "2025-05-31T21:06:56-07:00",
+      "response_count": 0,
+      "firm_email": "\"Becky V. Casillas\" <bvc@banalaw.com>"
+    },
+    "73173": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.391324",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: YADEGARIESQ@GMAIL.COM] Sheila Kaye Sing DOI 04/26/2017 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:38",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:03.676512",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: YADEGARIESQ@GMAIL.COM] Sheila Kaye Sing DOI 04/26/2017 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:26",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:25.930785",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "yadegariesq@gmail.com",
+            "subject": "Fwd: SHEILA KAYE SING DOI 04-26-2017",
+            "sent_date": "2024-12-29T18:47:14-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:25.981175",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "yadegariesq@gmail.com",
+            "subject": "Re: SHEILA KAYE SING DOI 04-26-2017",
+            "sent_date": "2024-12-29T18:44:18-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:31.388010",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "yadegariesq@gmail.com",
+            "subject": "SHEILA KAYE SING DOI 04-26-2017",
+            "sent_date": "2024-12-14T13:21:58-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:46.592613",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: YADEGARIESQ@GMAIL.COM] Sheila Kaye Sing DOI 04/26/2017 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:38",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:53.045912",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: YADEGARIESQ@GMAIL.COM] Sheila Kaye Sing DOI 04/26/2017 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:26",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        }
+      ],
+      "current_status": "unknown",
+      "last_contact": "2025-08-18T14:08:26",
+      "response_count": 0,
+      "firm_email": "transcontest@proton.me"
+    },
+    "283278": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.393030",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: LIENS@STERINLAW.COM] Marco Valeriano DOI 03/16/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:35",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:03.680482",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: LIENS@STERINLAW.COM] Marco Valeriano DOI 03/16/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:23",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:07.157095",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"Info@Sterinlaw.com\" <info@sterinlaw.com>",
+            "subject": "Re: MARCO VALERIANO DOI 03-16-2022 // Case Status Request",
+            "sent_date": "2025-02-01T23:35:44-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:07.802114",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Dean H <deanh.transcon@gmail.com>, Gilbert Manriquez <gilbert@sterinlaw.com>",
+            "subject": "Re: MARCO VALERIANO DOI 03-16-2022 // Case Status Request",
+            "sent_date": "2025-01-31T19:52:05+00:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:46.652084",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: LIENS@STERINLAW.COM] Marco Valeriano DOI 03/16/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:35",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:53.108715",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: LIENS@STERINLAW.COM] Marco Valeriano DOI 03/16/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:23",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        }
+      ],
+      "current_status": "unknown",
+      "last_contact": "2025-08-18T14:08:23",
+      "response_count": 0,
+      "firm_email": "transcontest@proton.me"
+    },
+    "142368": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.394444",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ALEX@WDHENDRICKSLAW.COM] Maria Lilian Gonzalez DOI 01/01/2013 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:33",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:03.684321",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ALEX@WDHENDRICKSLAW.COM] Maria Lilian Gonzalez DOI 01/01/2013 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:21",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:18.543930",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Lorraine Schneider <llschneider.summit@gmail.com>",
+            "subject": "Re: JOSE  GARCIA PV 78900 -- 0$ balance in PV. Can we close?",
+            "sent_date": "2025-05-31T20:56:48-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:10.576251",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Alex Carrero <a.carrero@bernslaw.com>",
+            "subject": "Re: MARIA LILIAN GONZALEZ DOI 01-01-2013",
+            "sent_date": "2025-01-27T15:24:56-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:10.819695",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "deanh.transcon@gmail.com",
+            "subject": "Re: MARIA LILIAN GONZALEZ DOI 01-01-2013",
+            "sent_date": "2025-01-27T14:23:47-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:10.869447",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "A.CARRERO@bernslaw.com, CARRERO@bernslaw.com",
+            "subject": "MARIA LILIAN GONZALEZ DOI 01-01-2013",
+            "sent_date": "2025-01-27T14:23:39-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:46.711251",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ALEX@WDHENDRICKSLAW.COM] Maria Lilian Gonzalez DOI 01/01/2013 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:33",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:53.171264",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ALEX@WDHENDRICKSLAW.COM] Maria Lilian Gonzalez DOI 01/01/2013 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:21",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:47:12.292642",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Lorraine Schneider <llschneider.summit@gmail.com>",
+            "subject": "Re: JOSE  GARCIA PV 78900 -- 0$ balance in PV. Can we close?",
+            "sent_date": "2025-05-31T20:56:48-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        }
+      ],
+      "current_status": "unknown",
+      "last_contact": "2025-05-31T20:56:48-07:00",
+      "response_count": 0,
+      "firm_email": "Lorraine Schneider <llschneider.summit@gmail.com>"
+    },
+    "297597": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.395869",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: CM@SUNSETWESTLG.COM] Maria Caceres DOI 06/26/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:31",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:03.688178",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: CM@SUNSETWESTLG.COM] Maria Caceres DOI 06/26/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:19",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:09.853204",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"Julie Lopez | SUP2\" <julie@sunsetwestlg.com>",
+            "subject": "Re: FW: MARIA CACERES DOI 06-26-2022 // Case Status Request",
+            "sent_date": "2025-06-17T17:50:54-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:10.013196",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Dean H <deanh.transcon@gmail.com>",
+            "subject": "Re: FW: MARIA CACERES DOI 06-26-2022 // Case Status Request",
+            "sent_date": "2025-06-16T15:31:45+00:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:10.789318",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"Manda Vassigh | SUP3\" <manda@sunsetwestlg.com>",
+            "subject": "Re: FW: MARIA CACERES DOI 06-26-2022 // Case Status Request",
+            "sent_date": "2025-06-11T19:33:31-07:00",
+            "is_follow_up": true,
+            "is_initial": false
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:18.569903",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"Manda Vassigh | SUP3\" <manda@sunsetwestlg.com>",
+            "subject": "Re: FW: MARIA CACERES DOI 06-26-2022 // Case Status Request",
+            "sent_date": "2025-05-31T20:50:52-07:00",
+            "is_follow_up": true,
+            "is_initial": false
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:07.561877",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"Manda Vassigh | SUP3\" <manda@sunsetwestlg.com>",
+            "subject": "Re: FW: MARIA CACERES DOI 06-26-2022 // Case Status Request",
+            "sent_date": "2025-01-31T14:01:15-08:00",
+            "is_follow_up": true,
+            "is_initial": false
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:08.695703",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"Julie Lopez | SUP2\" <julie@sunsetwestlg.com>",
+            "subject": "FW: MARIA CACERES DOI 06-26-2022 // Case Status Request",
+            "sent_date": "2025-01-29T19:13:42+00:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:46.786477",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: CM@SUNSETWESTLG.COM] Maria Caceres DOI 06/26/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:31",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:53.232387",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: CM@SUNSETWESTLG.COM] Maria Caceres DOI 06/26/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:19",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:46:37.766304",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"Julie Lopez | SUP2\" <julie@sunsetwestlg.com>",
+            "subject": "Re: FW: MARIA CACERES DOI 06-26-2022 // Case Status Request",
+            "sent_date": "2025-06-17T17:50:54-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:46:38.579520",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Dean H <deanh.transcon@gmail.com>",
+            "subject": "Re: FW: MARIA CACERES DOI 06-26-2022 // Case Status Request",
+            "sent_date": "2025-06-16T15:31:45+00:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:46:42.240939",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"Manda Vassigh | SUP3\" <manda@sunsetwestlg.com>",
+            "subject": "Re: FW: MARIA CACERES DOI 06-26-2022 // Case Status Request",
+            "sent_date": "2025-06-11T19:33:31-07:00",
+            "is_follow_up": true,
+            "is_initial": false
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:47:12.367142",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"Manda Vassigh | SUP3\" <manda@sunsetwestlg.com>",
+            "subject": "Re: FW: MARIA CACERES DOI 06-26-2022 // Case Status Request",
+            "sent_date": "2025-05-31T20:50:52-07:00",
+            "is_follow_up": true,
+            "is_initial": false
+          }
+        }
+      ],
+      "current_status": "unknown",
+      "last_contact": "2025-05-31T20:50:52-07:00",
+      "response_count": 0,
+      "firm_email": "\"Manda Vassigh | SUP3\" <manda@sunsetwestlg.com>"
+    },
+    "295782": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.397507",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ACOSTALAWOFFICES@YAHOO.COM] Teresa Continery Perez DOI 06/06/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:28",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:03.692110",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ACOSTALAWOFFICES@YAHOO.COM] Teresa Continery Perez DOI 06/06/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:16",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:46.852337",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ACOSTALAWOFFICES@YAHOO.COM] Teresa Continery Perez DOI 06/06/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:28",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:53.295236",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ACOSTALAWOFFICES@YAHOO.COM] Teresa Continery Perez DOI 06/06/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:16",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        }
+      ],
+      "current_status": "unknown",
+      "last_contact": "2025-08-18T14:08:16",
+      "response_count": 0,
+      "firm_email": "transcontest@proton.me"
+    },
+    "185705": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.398999",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: JULIASKLARLAW3@GMAIL.COM] Karapet Ordakyan DOI 10/17/2019 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:26",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:03.696238",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: JULIASKLARLAW3@GMAIL.COM] Karapet Ordakyan DOI 10/17/2019 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:14",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:46.917252",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: JULIASKLARLAW3@GMAIL.COM] Karapet Ordakyan DOI 10/17/2019 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:26",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:53.355740",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: JULIASKLARLAW3@GMAIL.COM] Karapet Ordakyan DOI 10/17/2019 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:14",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        }
+      ],
+      "current_status": "unknown",
+      "last_contact": "2025-08-18T14:08:14",
+      "response_count": 0,
+      "firm_email": "transcontest@proton.me"
+    },
+    "157369": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.400473",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ] Juana Acosta DOI 09/07/2020 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:23",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:03.700180",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ] Juana Acosta DOI 09/07/2020 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:11",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:11.006995",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Daniel Smykovsky <daniel@sterinlaw.com>",
+            "subject": "Re: JUANA ACOSTA DOB 07-20-1964 // Prohealth",
+            "sent_date": "2025-06-11T12:37:48-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:11.080904",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Dean H <deanh.transcon@gmail.com>",
+            "subject": "Re: JUANA ACOSTA DOB 07-20-1964 // Prohealth",
+            "sent_date": "2025-06-10T20:00:44+00:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:06.909731",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Alejo Ayala <Alejo@downtownlalaw.com>, \"lienstatus@downtownlalaw.com\" <Lienstatus@downtownlalaw.com>, Averi Dunn <Averi.dunn@downtownlalaw.com>, Gaudy Magana <Gaudy@downtownlalaw.com>",
+            "subject": "Re: JUANA ACOSTA DOI 09-07-2020",
+            "sent_date": "2025-02-03T11:38:20-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:10.916592",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Alejo Ayala <Alejo@downtownlalaw.com>, \"lienstatus@downtownlalaw.com\" <Lienstatus@downtownlalaw.com>, Averi Dunn <Averi.dunn@downtownlalaw.com>",
+            "subject": "Re: JUANA ACOSTA DOI 09-07-2020",
+            "sent_date": "2025-01-27T14:13:21-08:00",
+            "is_follow_up": true,
+            "is_initial": false
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:25.327090",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Alejo Ayala <Alejo@downtownlalaw.com>",
+            "subject": "Re: JUANA ACOSTA DOI 09-07-2020",
+            "sent_date": "2024-12-31T11:25:01-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:25.773952",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Dean H <deanh.transcon@gmail.com>",
+            "subject": "Re: JUANA ACOSTA DOI 09-07-2020",
+            "sent_date": "2024-12-30T17:45:49+00:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:26.032286",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "<deanh.transcon@gmail.com>",
+            "subject": "Undeliverable: Re: JUANA ACOSTA DOI 09-07-2020",
+            "sent_date": "2024-12-30T02:36:00+00:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:46.982830",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ] Juana Acosta DOI 09/07/2020 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:23",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:53.417363",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ] Juana Acosta DOI 09/07/2020 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:11",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:46:43.241416",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Daniel Smykovsky <daniel@sterinlaw.com>",
+            "subject": "Re: JUANA ACOSTA DOB 07-20-1964 // Prohealth",
+            "sent_date": "2025-06-11T12:37:48-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:46:43.542444",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Dean H <deanh.transcon@gmail.com>",
+            "subject": "Re: JUANA ACOSTA DOB 07-20-1964 // Prohealth",
+            "sent_date": "2025-06-10T20:00:44+00:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        }
+      ],
+      "current_status": "unknown",
+      "last_contact": "2025-06-10T20:00:44+00:00",
+      "response_count": 0,
+      "firm_email": "Dean H <deanh.transcon@gmail.com>"
+    },
+    "331701": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.402003",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: PI@HARTOUNIAN.COM] Roza Unusyan DOI 03/29/2023 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:21",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:03.704112",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: PI@HARTOUNIAN.COM] Roza Unusyan DOI 03/29/2023 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:09",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:25.915503",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Hartounian APLC <pi@hartounian.com>",
+            "subject": "ROZA UNUSYAN DOI 03-29-2023 // Prohealth",
+            "sent_date": "2025-05-07T22:50:22-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:26.328851",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "deanh.transcon@gmail.com",
+            "subject": "Re: ROZA UNUSYAN DOI 03-29-2023 // Prohealth",
+            "sent_date": "2025-05-06T20:38:34-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:47.043198",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: PI@HARTOUNIAN.COM] Roza Unusyan DOI 03/29/2023 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:21",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:53.478924",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: PI@HARTOUNIAN.COM] Roza Unusyan DOI 03/29/2023 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:09",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:47:33.826632",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Hartounian APLC <pi@hartounian.com>",
+            "subject": "ROZA UNUSYAN DOI 03-29-2023 // Prohealth",
+            "sent_date": "2025-05-07T22:50:22-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:47:35.057477",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "deanh.transcon@gmail.com",
+            "subject": "Re: ROZA UNUSYAN DOI 03-29-2023 // Prohealth",
+            "sent_date": "2025-05-06T20:38:34-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        }
+      ],
+      "current_status": "unknown",
+      "last_contact": "2025-05-06T20:38:34-07:00",
+      "response_count": 0,
+      "firm_email": "deanh.transcon@gmail.com"
+    },
+    "288493": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.403801",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ] Alida Garcia DOI 04/03/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:18",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:03.708066",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ] Alida Garcia DOI 04/03/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:07",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:03.937048",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "karen@hinden.net",
+            "subject": "Re: Re: ALIDA GARCIA DOI 04-03-2022 // Case Status Request",
+            "sent_date": "2025-08-01T12:47:58-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:03.943004",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Dean H <deanh.transcon@gmail.com>",
+            "subject": "Re: Re: ALIDA GARCIA DOI 04-03-2022 // Case Status Request",
+            "sent_date": "2025-07-31T16:05:34-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:06.080292",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"karen@hinden.net\" <karen@hinden.net>",
+            "subject": "Re: Re: ALIDA GARCIA DOI 04-03-2022 // Case Status Request",
+            "sent_date": "2025-07-08T19:16:49-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:06.799867",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Dean H <deanh.transcon@gmail.com>",
+            "subject": "Re: Re: ALIDA GARCIA DOI 04-03-2022 // Case Status Request",
+            "sent_date": "2025-07-07T11:27:34-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:09.537616",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Luz Quezada <lquezada.summit@gmail.com>",
+            "subject": "Letter1 to be sent PV 288493",
+            "sent_date": "2025-06-18T15:46:20-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:07.108802",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"karen@hinden.net\" <karen@hinden.net>",
+            "subject": "Re: Re: ALIDA GARCIA DOI 04-03-2022 // Case Status Request",
+            "sent_date": "2025-02-01T23:42:06-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:07.261819",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Dean H <deanh.transcon@gmail.com>",
+            "subject": "Re: Re: ALIDA GARCIA DOI 04-03-2022 // Case Status Request",
+            "sent_date": "2025-01-31T14:33:33-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:07.364898",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Dean H <deanh.transcon@gmail.com>",
+            "subject": "Re: Re: ALIDA GARCIA DOI 04-03-2022 // Case Status Request",
+            "sent_date": "2025-01-31T14:27:55-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:07.463296",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Dean H <deanh.transcon@gmail.com>",
+            "subject": "Re: Re: ALIDA GARCIA DOI 04-03-2022 // Case Status Request",
+            "sent_date": "2025-01-31T14:18:44-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:07.512350",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Dean H <deanh.transcon@gmail.com>",
+            "subject": "Re: Re: ALIDA GARCIA DOI 04-03-2022 // Case Status Request",
+            "sent_date": "2025-01-31T14:18:08-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:07.705598",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "karen@hinden.net",
+            "subject": "Re: Re: ALIDA GARCIA DOI 04-03-2022 // Case Status Request",
+            "sent_date": "2025-01-31T13:52:35-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:07.755345",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "karen@hinden.net",
+            "subject": "Re: Re: ALIDA GARCIA DOI 04-03-2022 // Case Status Request",
+            "sent_date": "2025-01-31T13:48:24-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:08.645546",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Dean H <deanh.transcon@gmail.com>",
+            "subject": "Re: ALIDA GARCIA DOI 04-03-2022 // Case Status Request",
+            "sent_date": "2025-01-29T12:53:28-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:08.742739",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"deanh.transcon@gmail.com\" <deanh.transcon@gmail.com>",
+            "subject": "Fwd: Re: ALIDA GARCIA DOI 04-03-2022 // Case Status Request",
+            "sent_date": "2025-01-29T09:46:42-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:47.104110",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ] Alida Garcia DOI 04/03/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:29:18",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:53.540668",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ] Alida Garcia DOI 04/03/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:08:07",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:56.498432",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "karen@hinden.net",
+            "subject": "Re: Re: ALIDA GARCIA DOI 04-03-2022 // Case Status Request",
+            "sent_date": "2025-08-01T12:47:58-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:56.561506",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Dean H <deanh.transcon@gmail.com>",
+            "subject": "Re: Re: ALIDA GARCIA DOI 04-03-2022 // Case Status Request",
+            "sent_date": "2025-07-31T16:05:34-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:46:16.505770",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"karen@hinden.net\" <karen@hinden.net>",
+            "subject": "Re: Re: ALIDA GARCIA DOI 04-03-2022 // Case Status Request",
+            "sent_date": "2025-07-08T19:16:49-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:46:21.503961",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Dean H <deanh.transcon@gmail.com>",
+            "subject": "Re: Re: ALIDA GARCIA DOI 04-03-2022 // Case Status Request",
+            "sent_date": "2025-07-07T11:27:34-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:46:36.564598",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Luz Quezada <lquezada.summit@gmail.com>",
+            "subject": "Letter1 to be sent PV 288493",
+            "sent_date": "2025-06-18T15:46:20-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        }
+      ],
+      "current_status": "unknown",
+      "last_contact": "2025-06-18T15:46:20-07:00",
+      "response_count": 0,
+      "firm_email": "Luz Quezada <lquezada.summit@gmail.com>"
+    },
+    "378816": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.405836",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "TABIBNIALAW@GMAIL.COM",
+            "subject": "MELISSA REDMAN DOI 12/19/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:21:37",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:47.162079",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "TABIBNIALAW@GMAIL.COM",
+            "subject": "MELISSA REDMAN DOI 12/19/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T15:21:37",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        }
+      ],
+      "current_status": "unknown",
+      "last_contact": "2025-08-18T15:21:37",
+      "response_count": 0,
+      "firm_email": "TABIBNIALAW@GMAIL.COM"
+    },
+    "315042": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.408460",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"deanh.transcon@gmail.com\" <deanh.transcon@gmail.com>",
+            "subject": "JAMES CISNEROS DOI 10/05/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T20:12:20+00:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:03.412380",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"deanh.transcon@gmail.com\" <deanh.transcon@gmail.com>",
+            "subject": "Re: JAMES CISNEROS DOI 10/05/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T00:18:33+00:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:47.221871",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"deanh.transcon@gmail.com\" <deanh.transcon@gmail.com>",
+            "subject": "JAMES CISNEROS DOI 10/05/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T20:12:20+00:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:47.292965",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"deanh.transcon@gmail.com\" <deanh.transcon@gmail.com>",
+            "subject": "Re: JAMES CISNEROS DOI 10/05/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T00:18:33+00:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        }
+      ],
+      "current_status": "unknown",
+      "last_contact": "2025-08-18T00:18:33+00:00",
+      "response_count": 0,
+      "firm_email": "\"deanh.transcon@gmail.com\" <deanh.transcon@gmail.com>"
+    },
+    "327371": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.418730",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: CLARISSA@CALLJACOB.COM] Nissan Shalom DOI 03/04/2023 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:12:07",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:16.639457",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "MANDANA@calljacob.com",
+            "subject": "Nissan Shalom DOI 2023-03-04 // Prohealth",
+            "sent_date": "2025-06-01T13:11:27-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:47.353134",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: CLARISSA@CALLJACOB.COM] Nissan Shalom DOI 03/04/2023 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:12:07",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:47:05.835893",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "MANDANA@calljacob.com",
+            "subject": "Nissan Shalom DOI 2023-03-04 // Prohealth",
+            "sent_date": "2025-06-01T13:11:27-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        }
+      ],
+      "current_status": "unknown",
+      "last_contact": "2025-06-01T13:11:27-07:00",
+      "response_count": 0,
+      "firm_email": "MANDANA@calljacob.com"
+    },
+    "288304": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.420436",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: SMURADIAN@BLOCKLLP.COM] Michael Madrigal DOI 04/11/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:12:01",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:04.842799",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "mgabuchian@blockllp.com, Dean H <deanh.transcon@gmail.com>",
+            "subject": "Fwd: Fw: PROHEALTH ACCEPTS THE OFFER re: Michael Madrigal, DOB 8/31/95",
+            "sent_date": "2025-07-18T08:39:50-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:09.041206",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "deanh.transcon@gmail.com",
+            "subject": "Balance Confirmation - Michael Madrigal",
+            "sent_date": "2025-06-23T09:07:35-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:00.500402",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Margaret Gabuchian <mgabuchian@blockllp.com>",
+            "subject": "Re: MICHAEL MADRIGAL DOI 04-11-2022 // Prohealth Case Status Request",
+            "sent_date": "2025-02-14T20:55:14-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:02.045789",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "deanh.transcon@gmail.com",
+            "subject": "RE: MICHAEL MADRIGAL DOI 04-11-2022 // Prohealth Case Status Request",
+            "sent_date": "2025-02-11T11:46:01-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:47.412660",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: SMURADIAN@BLOCKLLP.COM] Michael Madrigal DOI 04/11/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:12:01",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:46:06.175024",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "mgabuchian@blockllp.com, Dean H <deanh.transcon@gmail.com>",
+            "subject": "Fwd: Fw: PROHEALTH ACCEPTS THE OFFER re: Michael Madrigal, DOB 8/31/95",
+            "sent_date": "2025-07-18T08:39:50-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:46:33.397537",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "deanh.transcon@gmail.com",
+            "subject": "Balance Confirmation - Michael Madrigal",
+            "sent_date": "2025-06-23T09:07:35-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        }
+      ],
+      "current_status": "unknown",
+      "last_contact": "2025-06-23T09:07:35-07:00",
+      "response_count": 0,
+      "firm_email": "deanh.transcon@gmail.com"
+    },
+    "315497": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.422202",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ADMIN@SARRAFLAW.COM] Juan Ramirez DOI 07/13/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:11:59",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:16.661737",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "MAURICIO@sarraflawfirm.com",
+            "subject": "Juan Ramirez DOI 2022-07-13 // Prohealth",
+            "sent_date": "2025-06-01T13:11:17-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:47.476441",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ADMIN@SARRAFLAW.COM] Juan Ramirez DOI 07/13/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:11:59",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:47:05.923409",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "MAURICIO@sarraflawfirm.com",
+            "subject": "Juan Ramirez DOI 2022-07-13 // Prohealth",
+            "sent_date": "2025-06-01T13:11:17-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        }
+      ],
+      "current_status": "unknown",
+      "last_contact": "2025-06-01T13:11:17-07:00",
+      "response_count": 0,
+      "firm_email": "MAURICIO@sarraflawfirm.com"
+    },
+    "293297": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.423954",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: LIENS@STERINLAW.COM] Curtis Nicholson DOI 05/28/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:11:57",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:02.536427",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "\"Info@Sterinlaw.com\" <info@sterinlaw.com>",
+            "subject": "Re: CURTIS NICHOLSON DOI 05-28-2022 // Prohealth Case Status Request",
+            "sent_date": "2025-02-10T17:42:27-08:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:49:03.187549",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Dean H <deanh.transcon@gmail.com>, Gilbert Manriquez <gilbert@sterinlaw.com>, Daniel Smykovsky <daniel@sterinlaw.com>",
+            "subject": "Re: CURTIS NICHOLSON DOI 05-28-2022 // Prohealth Case Status Request",
+            "sent_date": "2025-02-10T21:46:08+00:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:47.535807",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: LIENS@STERINLAW.COM] Curtis Nicholson DOI 05/28/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:11:57",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        }
+      ],
+      "current_status": "unknown",
+      "last_contact": "2025-08-18T14:11:57",
+      "response_count": 0,
+      "firm_email": "transcontest@proton.me"
+    },
+    "373490": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.425743",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: MIKE@EMRANILAWYERS.COM] William Walden UNKNOWN DOI // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:11:54",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:47.593754",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: MIKE@EMRANILAWYERS.COM] William Walden UNKNOWN DOI // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:11:54",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        }
+      ],
+      "current_status": "unknown",
+      "last_contact": "2025-08-18T14:11:54",
+      "response_count": 0,
+      "firm_email": "transcontest@proton.me"
+    },
+    "278965": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.427528",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ] Leonardo Herrera DOI 01/13/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:11:52",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:12.169250",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Judith Chamussy <jchamussy@kaloustianlawgroup.com>",
+            "subject": "Re: Leonardo Herrera DOI 2022-01-13 // Prohealth",
+            "sent_date": "2025-06-03T23:15:53-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:13.159082",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "deanh.transcon@gmail.com",
+            "subject": "Re: Leonardo Herrera DOI 2022-01-13 // Prohealth",
+            "sent_date": "2025-06-02T10:05:05-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T21:48:16.690406",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "JUDITH@kaloustianlegal.com",
+            "subject": "Leonardo Herrera DOI 2022-01-13 // Prohealth",
+            "sent_date": "2025-06-01T13:11:11-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:47.652531",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: ] Leonardo Herrera DOI 01/13/2022 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:11:52",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:46:48.172857",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "Judith Chamussy <jchamussy@kaloustianlawgroup.com>",
+            "subject": "Re: Leonardo Herrera DOI 2022-01-13 // Prohealth",
+            "sent_date": "2025-06-03T23:15:53-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:46:52.270330",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "deanh.transcon@gmail.com",
+            "subject": "Re: Leonardo Herrera DOI 2022-01-13 // Prohealth",
+            "sent_date": "2025-06-02T10:05:05-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:47:06.001620",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "JUDITH@kaloustianlegal.com",
+            "subject": "Leonardo Herrera DOI 2022-01-13 // Prohealth",
+            "sent_date": "2025-06-01T13:11:11-07:00",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        }
+      ],
+      "current_status": "unknown",
+      "last_contact": "2025-06-01T13:11:11-07:00",
+      "response_count": 0,
+      "firm_email": "JUDITH@kaloustianlegal.com"
+    },
+    "202155": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.429396",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: DCBRUE@AOL.COM] Magdalena Ramirez DOI 01/02/2020 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:11:49",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        },
+        {
+          "timestamp": "2025-08-19T22:45:47.717322",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: DCBRUE@AOL.COM] Magdalena Ramirez DOI 01/02/2020 // Prohealth Advanced Imaging",
+            "sent_date": "2025-08-18T14:11:49",
+            "is_follow_up": false,
+            "is_initial": true
+          }
+        }
+      ],
+      "current_status": "unknown",
+      "last_contact": "2025-08-18T14:11:49",
+      "response_count": 0,
+      "firm_email": "transcontest@proton.me"
+    },
+    "282696": {
+      "activities": [
+        {
+          "timestamp": "2025-08-19T21:48:03.431364",
+          "type": "email_sent",
+          "details": {
+            "recipient_email": "transcontest@proton.me",
+            "subject": "[TEST MODE - Original To: DANIEL@DOWNTOWNLALAW.COM] Ana Amaro DOI 03/10/2022 // Prohealth Advanced Imaging"

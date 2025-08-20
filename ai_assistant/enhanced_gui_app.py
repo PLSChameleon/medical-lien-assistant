@@ -2133,9 +2133,11 @@ class EnhancedMainWindow(QMainWindow):
                 len(self.collections_tracker.data.get("cases", {})) == 0):
                 try:
                     logger.info("Bootstrapping CollectionsTracker with email cache...")
+                    # Limit to 300 most recent emails for faster startup
                     self.collections_tracker.bootstrap_from_email_cache(
                         self.email_cache_service.cache,
-                        self.case_manager
+                        self.case_manager,
+                        max_emails=300
                     )
                     logger.info("CollectionsTracker bootstrapped successfully")
                 except Exception as e:

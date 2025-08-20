@@ -326,16 +326,21 @@ class CollectionsTracker:
             "top_responsive_firms": top_firms[:5]
         }
     
-    def bootstrap_from_email_cache(self, email_cache, case_manager):
+    def bootstrap_from_email_cache(self, email_cache, case_manager, max_emails=500):
         """
         Bootstrap collections tracking from existing email cache
         Analyzes sent emails to populate case activity history
+        
+        Args:
+            email_cache: The email cache dictionary
+            case_manager: CaseManager instance
+            max_emails: Maximum number of emails to process (default 500)
         """
         if not email_cache or not email_cache.get("emails"):
             logger.warning("No email cache available for bootstrap")
             return
         
-        logger.info("Bootstrapping collections tracker from email cache...")
+        logger.info(f"Bootstrapping collections tracker from email cache (max {max_emails} emails)...")
         
         # Get all cases for matching
         case_data = {}
@@ -357,8 +362,10 @@ class CollectionsTracker:
         processed_count = 0
         matched_count = 0
         
-        # Analyze each sent email
-        for email in email_cache["emails"]:
+        # Analyze each sent email (limit to max_emails for performance)
+        emails_to_process = list(email_cache["emails"])[:max_emails]
+        
+        for email in emails_to_process:
             try:
                 # Skip if not collections-related
                 subject = email.get("subject", "").lower()
@@ -378,7 +385,8 @@ class CollectionsTracker:
                     if patient_names:
                         # Find PV for this patient
                         for pv, case_info in case_data.items():
-                            if case_info["name"].lower() in patient_names:
+                            name = case_info.get("name", "")
+                            if name and name.lower() in patient_names:
                                 pv_numbers.append(pv)
                                 break
                 
@@ -468,9 +476,9 @@ class CollectionsTracker:
         matched_names = []
         
         for pv, case_info in case_data.items():
-            name = case_info["name"].lower()
-            if name and len(name) > 3 and name in text_lower:  # Avoid matching very short names
-                matched_names.append(name)
+            name = case_info.get("name", "")
+            if name and len(name) > 3 and name.lower() in text_lower:  # Avoid matching very short names
+                matched_names.append(name.lower())
         
         return matched_names
     
@@ -658,8 +666,9 @@ class CollectionsTracker:
                 "activity_count": len(case_tracking.get("activities", []))
             }
             
-            # Add DOI and Status to case data
+            # Add DOI, DOA and Status to case data
             case_data["doi"] = case_info.get("DOI", "")
+            case_data["doa"] = case_info.get("DOA", "")  # Date of Accident for CCP 335.1
             case_data["status"] = case_info.get("Status", "")
             
             # Improved categorization logic

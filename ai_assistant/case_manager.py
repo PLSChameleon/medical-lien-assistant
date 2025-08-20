@@ -195,6 +195,7 @@ class CaseManager:
                 "Status": row[2] if len(row) > 2 else "",
                 "Name": row[3] if len(row) > 3 else "",
                 "DOI": doi_formatted,
+                "DOA": doi_formatted,  # Date of Accident same as DOI for medical liens
                 "Attorney Email": row[18] if len(row) > 18 else "",
                 "Attorney Phone": row[19] if len(row) > 19 else "",
                 "Law Firm": row[12] if len(row) > 12 else "",
@@ -204,6 +205,6 @@ class CaseManager:
             logger.error(f"Error formatting case: {e}")
             return {
                 "CMS": "", "PV": "", "Status": "", "Name": "", 
-                "DOI": "", "Attorney Email": "", "Attorney Phone": "", "Law Firm": "",
+                "DOI": "", "DOA": "", "Attorney Email": "", "Attorney Phone": "", "Law Firm": "",
                 "Balance": 0.0
             }
