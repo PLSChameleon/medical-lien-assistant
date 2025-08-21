@@ -446,7 +446,9 @@ class BulkEmailService:
             # Check if this is a CCP 335.1 email
             if email_type == "ccp_335_1":
                 # Generate CCP 335.1 statute of limitations inquiry
-                subject = f"CCP 335.1 Statute of Limitations Inquiry - {case_data.get('name', 'Patient')} (PV: {case_data.get('pv', '')})"
+                # Convert name to title case for proper capitalization
+                name_title_case = ' '.join(word.capitalize() for word in str(case_data.get('name', 'Patient')).split())
+                subject = f"CCP 335.1 Statute of Limitations Inquiry - {name_title_case} (PV: {case_data.get('pv', '')})"
                 
                 doi = case_data.get('doi', '')
                 body = f"""Dear Counsel,

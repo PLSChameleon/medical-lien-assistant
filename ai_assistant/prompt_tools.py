@@ -5,7 +5,8 @@ from datetime import datetime
 
 
 def build_subject_line(case):
-    name = case['Name'].upper()
+    # Convert name to title case (e.g., "John Smith" not "JOHN SMITH")
+    name = ' '.join(word.capitalize() for word in str(case['Name']).split())
     doi = case['DOI'].strftime('%Y-%m-%d')
     return f"{name} DOI {doi} // Prohealth"
 

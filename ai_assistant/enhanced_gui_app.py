@@ -486,7 +486,9 @@ class CategoriesWidget(QWidget):
             
             # Generate CCP 335.1 email content
             doi = ccp_case_data.get('doi', '')
-            subject = f"CCP 335.1 Statute of Limitations Inquiry - {ccp_case_data.get('name', 'Patient')} (PV: {ccp_case_data.get('pv', '')})"
+            # Convert name to title case for proper capitalization
+            name_title_case = ' '.join(word.capitalize() for word in str(ccp_case_data.get('name', 'Patient')).split())
+            subject = f"CCP 335.1 Statute of Limitations Inquiry - {name_title_case} (PV: {ccp_case_data.get('pv', '')})"
             
             body = f"""Dear Counsel,
 
@@ -3620,7 +3622,9 @@ Case Aging:
                 # Generate status request
                 progress.set_message("Generating email content...")
                 email_body = self.ai_service.generate_status_request_email(case)
-                subject = f"{case['Name'].upper()} DOI {case['DOI']} // Prohealth Advanced Imaging"
+                # Convert name to title case (e.g., "John Smith" not "JOHN SMITH")
+                name_title_case = ' '.join(word.capitalize() for word in str(case['Name']).split())
+                subject = f"{name_title_case} DOI {case['DOI']} // Prohealth Advanced Imaging"
             
             # Show draft dialog
             dialog = EmailDraftDialog(case, email_body, subject=subject, parent=self)
