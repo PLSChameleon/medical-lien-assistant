@@ -12,30 +12,32 @@ def build_subject_line(case):
 
 
 def generate_followup_prompt(case):
-    name = case['Name']
+    # Convert name to title case
+    name = ' '.join(word.capitalize() for word in str(case['Name']).split())
     doi = case['DOI'].strftime('%B %d, %Y')
     return f"""
-Dear Attorney,
+Hello,
 
-I am reaching out to inquire about the current status of the medical lien case for patient {name}, who sustained an injury on {doi}.
+In regards to Prohealth Advanced Imaging billing and liens for {name} (DOI: {doi}), I am following up on my previous emails requesting the status of the case at this time.
 
-Please provide an update at your earliest convenience. If necessary, I am able to forward any additional medical reports or charges related to this case.
+Please get back to me when you have a moment.
 
-Thank you for your attention to this matter.
+Thank you for your time
 """.strip()
 
 
 def generate_status_request_prompt(case):
-    name = case['Name']
+    # Convert name to title case
+    name = ' '.join(word.capitalize() for word in str(case['Name']).split())
     doi = case['DOI'].strftime('%B %d, %Y')
     return f"""
-Dear Attorney,
+Hello,
 
-I am reaching out to request a status update on the medical lien case for our patient, {name}, who was injured on {doi}.
+In regards to Prohealth Advanced Imaging billing and liens for {name} (DOI: {doi}), I am reaching out to request the current status of the case.
 
-If you require any medical records or billing information, please let me know and I will forward them promptly.
+Please let me know when you have an update.
 
-Thank you for your time and assistance.
+Thank you for your time
 """.strip()
 
 

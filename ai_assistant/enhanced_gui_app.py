@@ -39,6 +39,7 @@ from services.email_cache_service import EmailCacheService
 from services.collections_tracker import CollectionsTracker
 from services.bulk_email_service import BulkEmailService
 from services.case_acknowledgment_service import CaseAcknowledgmentService
+from services.template_summary_service import TemplateSummaryService
 from utils.progress_manager import ProgressManager, ProgressContext, with_progress
 from utils.threaded_operations import EmailCacheWorker, GmailSearchWorker, CategorizeWorker, CollectionsAnalyzerWorker
 try:
@@ -274,14 +275,29 @@ class CategoriesWidget(QWidget):
         if not widget:
             return
         
+        # Clear existing rows to ensure clean state
+        widget.setRowCount(0)
+        
+        # DEBUG: Log what we're updating
+        print(f"[DEBUG] Updating {category} table with {len(cases)} cases")
+        if cases:
+            print(f"[DEBUG] First case: PV={cases[0].get('pv')}, Name={cases[0].get('name')}")
+            if len(cases) > 1:
+                print(f"[DEBUG] Last case: PV={cases[-1].get('pv')}, Name={cases[-1].get('name')}")
+        
         widget.setRowCount(len(cases))
         
         for row, case in enumerate(cases):
+            # CRITICAL: Capture all case data at the start to ensure consistency
+            pv = str(case.get('pv', ''))
+            name = str(case.get('name', ''))
+            status = str(case.get('status', 'Unknown'))
+            
             # PV #
-            widget.setItem(row, 0, QTableWidgetItem(str(case.get('pv', ''))))
+            widget.setItem(row, 0, QTableWidgetItem(pv))
             
             # Name
-            widget.setItem(row, 1, QTableWidgetItem(str(case.get('name', ''))))
+            widget.setItem(row, 1, QTableWidgetItem(name))
             
             # Balance - format as currency
             balance = case.get('balance', 0.0)
@@ -305,10 +321,9 @@ class CategoriesWidget(QWidget):
             widget.setItem(row, 5, QTableWidgetItem(str(case.get('attorney_email', ''))))
             
             # Status
-            widget.setItem(row, 6, QTableWidgetItem(str(case.get('status', 'Unknown'))))
+            widget.setItem(row, 6, QTableWidgetItem(status))
             
             # Acknowledgment status
-            pv = str(case.get('pv', ''))
             ack_info = self.ack_service.get_acknowledgment_info(pv)
             if ack_info:
                 ack_text = f"✅ {ack_info.get('reason', 'Acknowledged')[:20]}..."
@@ -322,34 +337,42 @@ class CategoriesWidget(QWidget):
             action_btn = QPushButton("Actions")
             action_menu = QMenu()
             
-            # Add actions
+            # CRITICAL: Create a helper function to ensure proper value capture
+            def create_action_handler(func, *args):
+                """Helper to properly capture values for action handlers"""
+                return lambda checked=False: func(*args)
+            
+            # Add actions with properly captured values
             summarize_action = action_menu.addAction("📄 Summarize")
-            summarize_action.triggered.connect(lambda checked, p=pv: self.summarize_case(p))
+            # DEBUG: Print what PV we're capturing
+            print(f"[DEBUG] Creating actions for row {row}: PV={pv}, Name={name}")
+            summarize_action.triggered.connect(create_action_handler(self.summarize_case, pv))
             
             followup_action = action_menu.addAction("✉️ Draft Follow-up")
-            followup_action.triggered.connect(lambda checked, p=pv: self.draft_followup(p))
+            followup_action.triggered.connect(create_action_handler(self.draft_followup, pv))
             
             status_action = action_menu.addAction("📮 Draft Status Request")
-            status_action.triggered.connect(lambda checked, p=pv: self.draft_status_request(p))
+            status_action.triggered.connect(create_action_handler(self.draft_status_request, pv))
             
             # Add CCP 335.1 action if in CCP 335.1 category
             if category == "ccp_335_1":
                 ccp_action = action_menu.addAction("⚖️ Send CCP 335.1 Inquiry")
-                ccp_action.triggered.connect(lambda checked, p=pv, c=case: self.send_ccp_335_1_inquiry(p, c))
+                # Make a copy of case data to avoid reference issues
+                case_copy = dict(case)
+                ccp_action.triggered.connect(create_action_handler(self.send_ccp_335_1_inquiry, pv, case_copy))
             
             action_menu.addSeparator()
             
             # Acknowledgment actions
             if ack_info:
                 unack_action = action_menu.addAction("❌ Remove Acknowledgment")
-                unack_action.triggered.connect(lambda checked, p=pv: self.unacknowledge_case(p))
+                unack_action.triggered.connect(create_action_handler(self.unacknowledge_case, pv))
                 
                 extend_action = action_menu.addAction("⏰ Extend Snooze")
-                extend_action.triggered.connect(lambda checked, p=pv: self.extend_snooze(p))
+                extend_action.triggered.connect(create_action_handler(self.extend_snooze, pv))
             else:
                 ack_action = action_menu.addAction("✅ Acknowledge Case")
-                ack_action.triggered.connect(lambda checked, p=pv, n=case.get('name', ''), s=case.get('status', ''): 
-                                           self.acknowledge_case(p, n, s))
+                ack_action.triggered.connect(create_action_handler(self.acknowledge_case, pv, name, status))
             
             action_btn.setMenu(action_menu)
             widget.setCellWidget(row, 8, action_btn)
@@ -426,6 +449,86 @@ class CategoriesWidget(QWidget):
         if self.parent_window:
             self.parent_window.process_bulk_category(category)
     
+    def move_case_from_acknowledged(self, pv):
+        """Move a case back from acknowledged to the appropriate category"""
+        try:
+            # For now, just trigger a refresh since determining the right category is complex
+            # In the future, we could analyze the case and add it to the right category
+            self.refresh_analysis()
+            
+            # Log the activity
+            if self.parent_window:
+                self.parent_window.log_activity(f"Removed acknowledgment for PV {pv}")
+                
+        except Exception as e:
+            print(f"Error moving case from acknowledged: {e}")
+    
+    def move_case_to_acknowledged(self, pv, acknowledgment_data):
+        """Move a case to the acknowledged section without refreshing"""
+        try:
+            # Remove from all category displays
+            self.remove_case_from_display(pv)
+            
+            # Add to the main acknowledged tab (it's a sibling tab, not a child)
+            if self.parent_window and hasattr(self.parent_window, 'acknowledged_cases_tab'):
+                acknowledged_widget = self.parent_window.acknowledged_cases_tab
+                if hasattr(acknowledged_widget, 'add_acknowledged_case'):
+                    # Get case details for the acknowledged display
+                    case = self.case_manager.get_case_by_pv(pv)
+                    if case:
+                        acknowledged_widget.add_acknowledged_case(pv, case, acknowledgment_data)
+            
+            # Log the activity
+            if self.parent_window:
+                self.parent_window.log_activity(f"Moved PV {pv} to acknowledged cases")
+                
+        except Exception as e:
+            print(f"Error moving case to acknowledged: {e}")
+    
+    def remove_case_from_display(self, pv):
+        """Remove a case from the current category display after email sent"""
+        try:
+            print(f"[DEBUG] Removing PV {pv} from category displays")
+            
+            # Find and remove the case from all category tables
+            for category in ["critical", "high_priority", "no_response", "recently_sent", "never_contacted", "missing_doi", "ccp_335_1"]:
+                if category in self.category_data:
+                    # Remove the case from the category data
+                    original_count = len(self.category_data[category])
+                    self.category_data[category] = [c for c in self.category_data[category] if str(c.get('pv')) != str(pv)]
+                    
+                    # If we removed something, update that category's table
+                    if len(self.category_data[category]) < original_count:
+                        print(f"[DEBUG] Removed PV {pv} from {category}, updating table with {len(self.category_data[category])} remaining cases")
+                        
+                        # Force immediate table refresh
+                        self.update_category_table(category, self.category_data[category])
+                        
+                        # Process events to ensure UI updates immediately
+                        QApplication.processEvents()
+                        
+                        # Update the category tab title with new count
+                        for i in range(self.category_tabs.count()):
+                            tab_text = self.category_tabs.tabText(i)
+                            if category in tab_text.lower().replace(' ', '_'):
+                                new_count = len(self.category_data[category])
+                                # Extract the category name without the count
+                                category_name = tab_text.split('(')[0].strip()
+                                self.category_tabs.setTabText(i, f"{category_name} ({new_count})")
+                                break
+            
+            # Update statistics
+            self.update_stats()
+            
+            # Log the removal
+            if self.parent_window:
+                self.parent_window.log_activity(f"Removed PV {pv} from category display")
+                
+        except Exception as e:
+            print(f"Error removing case from display: {e}")
+            import traceback
+            traceback.print_exc()
+    
     def export_category(self, category):
         """Export category cases to Excel"""
         try:
@@ -453,18 +556,37 @@ class CategoriesWidget(QWidget):
     
     def summarize_case(self, pv):
         """Trigger case summarization"""
+        print(f"[DEBUG] summarize_case called with PV: {pv}")
+        # Get the current case data for this PV to ensure we have the right info
+        current_case = None
+        for category in self.category_data.values():
+            for case in category:
+                if str(case.get('pv')) == str(pv):
+                    current_case = case
+                    break
+            if current_case:
+                break
+        
+        if current_case:
+            print(f"[DEBUG] Found case for PV {pv}: Name={current_case.get('name')}")
+        else:
+            print(f"[DEBUG] WARNING: Could not find case data for PV {pv} in category_data")
+        
         if self.parent_window:
-            self.parent_window.summarize_case_by_pv(pv)
+            # Pass reference to this widget so it can be notified when email is sent from summary
+            self.parent_window.summarize_case_by_pv(pv, category_widget=self)
     
     def draft_followup(self, pv):
         """Trigger follow-up email draft"""
         if self.parent_window:
-            self.parent_window.draft_followup_by_pv(pv)
+            # Pass reference to this widget so it can be notified when email is sent
+            self.parent_window.draft_followup_by_pv(pv, category_widget=self)
     
     def draft_status_request(self, pv):
         """Trigger status request draft"""
         if self.parent_window:
-            self.parent_window.draft_status_request_by_pv(pv)
+            # Pass reference to this widget so it can be notified when email is sent
+            self.parent_window.draft_status_request_by_pv(pv, category_widget=self)
     
     def send_ccp_335_1_inquiry(self, pv, case_data):
         """Send CCP 335.1 statute of limitations inquiry"""
@@ -492,7 +614,7 @@ class CategoriesWidget(QWidget):
             
             body = f"""Dear Counsel,
 
-I am writing to inquire about the current status of the above-referenced case.
+In regards to Prohealth Advanced Imaging billing and liens for the above-referenced case.
 
 Our records indicate that the date of injury for this matter was {doi}, which is now over two years ago. Under California Code of Civil Procedure Section 335.1, the statute of limitations for personal injury claims is generally two years from the date of injury.
 
@@ -505,8 +627,7 @@ We need this information to properly manage our lien and determine next steps. I
 
 Please respond at your earliest convenience so we can update our records accordingly.
 
-Thank you for your attention to this matter.
-"""
+Thank you for your attention to this matter"""
             
             # Get attorney email
             attorney_email = case.get('Attorney Email', '')
@@ -546,8 +667,8 @@ Thank you for your attention to this matter.
                         if hasattr(self.collections_tracker, 'mark_case_contacted'):
                             self.collections_tracker.mark_case_contacted(pv, contact_type="email_sent")
                         
-                        # Refresh the display
-                        self.refresh_analysis()
+                        # Remove from category display immediately (no need to refresh entire analysis)
+                        self.remove_case_from_display(pv)
                         
                     except Exception as e:
                         QMessageBox.critical(self, "Send Failed", f"Failed to send email: {str(e)}")
@@ -572,7 +693,8 @@ Thank you for your attention to this matter.
             
             if success:
                 QMessageBox.information(self, "Success", f"Case {pv} acknowledged successfully!")
-                self.refresh_analysis()
+                # Instead of refreshing, just move the case to acknowledged section
+                self.move_case_to_acknowledged(pv, data)
             else:
                 QMessageBox.critical(self, "Error", f"Failed to acknowledge case {pv}")
     
@@ -587,7 +709,8 @@ Thank you for your attention to this matter.
         if reply == QMessageBox.Yes:
             if self.ack_service.unacknowledge_case(pv):
                 QMessageBox.information(self, "Success", f"Acknowledgment removed for case {pv}")
-                self.refresh_analysis()
+                # Instead of refreshing, remove from acknowledged and add back to categories
+                self.move_case_from_acknowledged(pv)
             else:
                 QMessageBox.critical(self, "Error", f"Failed to remove acknowledgment")
     
@@ -602,7 +725,9 @@ Thank you for your attention to this matter.
         if ok:
             if self.ack_service.extend_snooze(pv, days):
                 QMessageBox.information(self, "Success", f"Extended snooze by {days} days")
-                self.refresh_analysis()
+                # No need to refresh, snooze extension doesn't affect display
+                if self.parent_window:
+                    self.parent_window.log_activity(f"Extended snooze for PV {pv} by {days} days")
             else:
                 QMessageBox.critical(self, "Error", "Failed to extend snooze")
 
@@ -1909,6 +2034,75 @@ class AcknowledgedCasesWidget(QWidget):
             QApplication.restoreOverrideCursor()
             QMessageBox.critical(self, "Error", f"Failed to load acknowledged cases: {str(e)}")
     
+    def add_acknowledged_case(self, pv, case_data, acknowledgment_data):
+        """Add a newly acknowledged case to the display without refreshing"""
+        try:
+            # Add to the table
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+            
+            # PV#
+            self.table.setItem(row, 0, QTableWidgetItem(str(pv)))
+            
+            # Name
+            self.table.setItem(row, 1, QTableWidgetItem(case_data.get('Name', '')))
+            
+            # DOI
+            doi = case_data.get('DOI', '')
+            if hasattr(doi, 'strftime'):
+                doi = doi.strftime("%m/%d/%Y")
+            self.table.setItem(row, 2, QTableWidgetItem(str(doi)))
+            
+            # Law Firm
+            self.table.setItem(row, 3, QTableWidgetItem(case_data.get('Law Firm', '')))
+            
+            # Status
+            self.table.setItem(row, 4, QTableWidgetItem(case_data.get('Status', '')))
+            
+            # Acknowledged Date
+            from datetime import datetime
+            ack_date = datetime.now().strftime("%m/%d/%Y")
+            self.table.setItem(row, 5, QTableWidgetItem(ack_date))
+            
+            # Reason
+            self.table.setItem(row, 6, QTableWidgetItem(acknowledgment_data.get('reason', '')))
+            
+            # Actions
+            action_widget = QWidget()
+            action_layout = QHBoxLayout()
+            action_layout.setContentsMargins(0, 0, 0, 0)
+            
+            # View button
+            view_btn = QPushButton("👁️")
+            view_btn.setToolTip("View details")
+            view_btn.clicked.connect(lambda checked, p=pv: self.view_details(p))
+            action_layout.addWidget(view_btn)
+            
+            # Unacknowledge button
+            unack_btn = QPushButton("❌")
+            unack_btn.setToolTip("Remove acknowledgment")
+            unack_btn.clicked.connect(lambda checked, p=pv: self.unacknowledge_case(p))
+            action_layout.addWidget(unack_btn)
+            
+            # Email button
+            email_btn = QPushButton("📧")
+            email_btn.setToolTip("Draft email")
+            email_btn.clicked.connect(lambda checked, cd=case_data: self.draft_email(cd))
+            action_layout.addWidget(email_btn)
+            
+            action_widget.setLayout(action_layout)
+            self.table.setCellWidget(row, 7, action_widget)
+            
+            # Update stats
+            current_count = self.table.rowCount()
+            self.stats_label.setText(f"Total: {current_count} cases")
+            
+            # Sort table to show newest at top
+            self.table.sortByColumn(5, Qt.DescendingOrder)
+            
+        except Exception as e:
+            print(f"Error adding acknowledged case to display: {e}")
+    
     def get_case_details(self, pv):
         """Get case details from case manager"""
         try:
@@ -1949,6 +2143,23 @@ class AcknowledgedCasesWidget(QWidget):
             self.parent_window.case_search_input.setText(str(pv))
             self.parent_window.search_cases()
     
+    def remove_case_from_display(self, pv):
+        """Remove a case from the acknowledged display instantly"""
+        try:
+            # Find and remove the row with this PV
+            for row in range(self.table.rowCount()):
+                item = self.table.item(row, 0)  # PV# is in column 0
+                if item and item.text() == str(pv):
+                    self.table.removeRow(row)
+                    break
+            
+            # Update stats
+            current_count = self.table.rowCount()
+            self.stats_label.setText(f"Total: {current_count} cases")
+            
+        except Exception as e:
+            print(f"Error removing case from acknowledged display: {e}")
+    
     def unacknowledge_case(self, pv):
         """Remove acknowledgment from a case"""
         reply = QMessageBox.question(
@@ -1960,7 +2171,8 @@ class AcknowledgedCasesWidget(QWidget):
         if reply == QMessageBox.Yes:
             if self.ack_service.unacknowledge_case(pv):
                 QMessageBox.information(self, "Success", f"Acknowledgment removed for case {pv}")
-                self.load_acknowledged_cases()
+                # Remove from display instantly instead of reloading
+                self.remove_case_from_display(pv)
             else:
                 QMessageBox.critical(self, "Error", "Failed to remove acknowledgment")
     
@@ -2150,6 +2362,13 @@ class EnhancedMainWindow(QMainWindow):
             # Initialize collections tracker
             self.collections_tracker = CollectionsTracker()
             logger.info("Initialized CollectionsTracker")
+            
+            # Initialize template summary service
+            self.template_summary_service = TemplateSummaryService(
+                email_cache_service=self.email_cache_service,
+                case_manager=self.case_manager
+            )
+            logger.info("Initialized TemplateSummaryService")
             
             # Set email cache on tracker if available
             if self.email_cache_service:
@@ -3451,8 +3670,13 @@ Case Aging:
             self.cms_count_label.setStyleSheet("font-size: 24px; font-weight: bold; color: orange;")
     
     # Action methods
-    def summarize_case_by_pv(self, pv):
-        """Summarize a case by PV number"""
+    def summarize_case_by_pv(self, pv, category_widget=None):
+        """Summarize a case by PV number
+        
+        Args:
+            pv: Patient Visit number
+            category_widget: Optional reference to the category widget that opened this summary
+        """
         try:
             case = self.case_manager.get_case_by_pv(pv)
             if not case:
@@ -3480,38 +3704,76 @@ Case Aging:
             # Summary text
             summary_text = QTextEdit()
             summary_text.setReadOnly(True)
+            summary_text.setFont(QFont("Consolas", 10))  # Use monospace font for better formatting
             
-            # Generate summary
+            # Generate template-based summary FIRST (instant)
             QApplication.setOverrideCursor(Qt.WaitCursor)
             
-            # Search for emails
-            query = f'"{case["Name"]}" OR {case["PV"]}'
-            if case.get('CMS'):
-                query += f' OR {case["CMS"]}'
-            
-            if self.gmail_service:
-                email_messages = self.gmail_service.search_messages(query, max_results=10)
-                if email_messages and self.ai_service:
-                    summary = self.ai_service.summarize_case_emails(case, email_messages)
-                    summary_text.setPlainText(summary)
-                else:
-                    summary_text.setPlainText("No emails found or AI service unavailable.")
+            # Use template summary service for instant results
+            if hasattr(self, 'template_summary_service'):
+                template_summary = self.template_summary_service.generate_summary(pv, case)
+                summary_text.setPlainText(template_summary)
+                summary_label = QLabel("<b>Case Analysis:</b>")
             else:
-                summary_text.setPlainText("Gmail service not available.")
+                # Fallback to AI if template service not available
+                summary_label = QLabel("<b>AI Summary:</b>")
+                # Search for emails
+                query = f'"{case["Name"]}" OR {case["PV"]}'
+                if case.get('CMS'):
+                    query += f' OR {case["CMS"]}'
+                
+                if self.gmail_service:
+                    email_messages = self.gmail_service.search_messages(query, max_results=10)
+                    if email_messages and self.ai_service:
+                        summary = self.ai_service.summarize_case_emails(case, email_messages)
+                        summary_text.setPlainText(summary)
+                    else:
+                        summary_text.setPlainText("No emails found or AI service unavailable.")
+                else:
+                    summary_text.setPlainText("Gmail service not available.")
             
             QApplication.restoreOverrideCursor()
             
-            layout.addWidget(QLabel("<b>AI Summary:</b>"))
+            layout.addWidget(summary_label)
             layout.addWidget(summary_text)
+            
+            # Add refresh button to optionally enhance with AI
+            if hasattr(self, 'template_summary_service') and self.ai_service and self.gmail_service:
+                enhance_layout = QHBoxLayout()
+                enhance_btn = QPushButton("🤖 Enhance with AI")
+                enhance_btn.setToolTip("Use ChatGPT to add more insights")
+                
+                def enhance_with_ai():
+                    QApplication.setOverrideCursor(Qt.WaitCursor)
+                    query = f'"{case["Name"]}" OR {case["PV"]}'
+                    if case.get('CMS'):
+                        query += f' OR {case["CMS"]}'
+                    email_messages = self.gmail_service.search_messages(query, max_results=10)
+                    if email_messages:
+                        ai_summary = self.ai_service.summarize_case_emails(case, email_messages)
+                        # Append AI insights to existing summary
+                        current_text = summary_text.toPlainText()
+                        enhanced = f"{current_text}\n\n{'='*60}\n🤖 AI ENHANCED INSIGHTS\n{'='*60}\n{ai_summary}"
+                        summary_text.setPlainText(enhanced)
+                    QApplication.restoreOverrideCursor()
+                    enhance_btn.setEnabled(False)
+                    enhance_btn.setText("✅ Enhanced")
+                
+                enhance_btn.clicked.connect(enhance_with_ai)
+                enhance_layout.addWidget(enhance_btn)
+                enhance_layout.addStretch()
+                layout.addLayout(enhance_layout)
             
             # Action buttons
             button_layout = QHBoxLayout()
             
             followup_btn = QPushButton("✉️ Draft Follow-up")
-            followup_btn.clicked.connect(lambda: self.draft_followup_by_pv(pv))
+            # Pass category_widget through to ensure case is removed from category after sending
+            followup_btn.clicked.connect(lambda: self.draft_followup_by_pv(pv, category_widget=category_widget))
             
             status_btn = QPushButton("📮 Draft Status Request")
-            status_btn.clicked.connect(lambda: self.draft_status_request_by_pv(pv))
+            # Pass category_widget through to ensure case is removed from category after sending
+            status_btn.clicked.connect(lambda: self.draft_status_request_by_pv(pv, category_widget=category_widget))
             
             close_btn = QPushButton("Close")
             close_btn.clicked.connect(dialog.close)
@@ -3532,7 +3794,7 @@ Case Aging:
             QApplication.restoreOverrideCursor()
             QMessageBox.critical(self, "Error", f"Failed to summarize case: {str(e)}")
     
-    def draft_followup_by_pv(self, pv):
+    def draft_followup_by_pv(self, pv, category_widget=None):
         """Draft follow-up email for a case"""
         try:
             case = self.case_manager.get_case_by_pv(pv)
@@ -3605,12 +3867,19 @@ Case Aging:
                         self.log_activity(f"CMS note failed: {str(e)}")
                     
                     self.log_activity(f"Sent follow-up for PV {pv}")
+                    
+                    # Update CMS card to reflect the new pending note
+                    self.update_cms_card()
+                    
+                    # Remove from category display if sent from category widget
+                    if category_widget:
+                        category_widget.remove_case_from_display(pv)
             
         except Exception as e:
             QApplication.restoreOverrideCursor()
             QMessageBox.critical(self, "Error", f"Failed to draft follow-up: {str(e)}")
     
-    def draft_status_request_by_pv(self, pv):
+    def draft_status_request_by_pv(self, pv, category_widget=None):
         """Draft status request email for a case"""
         try:
             case = self.case_manager.get_case_by_pv(pv)
@@ -3654,6 +3923,13 @@ Case Aging:
                         self.log_activity(f"CMS note failed: {str(e)}")
                     
                     self.log_activity(f"Sent status request for PV {pv}")
+                    
+                    # Update CMS card to reflect the new pending note
+                    self.update_cms_card()
+                    
+                    # Remove from category display if sent from category widget
+                    if category_widget:
+                        category_widget.remove_case_from_display(pv)
             
         except Exception as e:
             QApplication.restoreOverrideCursor()

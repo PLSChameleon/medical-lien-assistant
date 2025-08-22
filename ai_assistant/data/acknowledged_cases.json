@@ -34,5 +34,104 @@
     "notes": "firm saying its gonna take a while to settle ",
     "snooze_days": 90,
     "review_after": "2025-11-16T15:24:02.232820"
+  },
+  "186245": {
+    "acknowledged_date": "2025-08-20T23:26:02.036844",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Lien Not Signed",
+    "notes": "file dropped ",
+    "snooze_days": 365,
+    "review_after": "2026-08-20T23:26:02.036859"
+  },
+  "346484": {
+    "acknowledged_date": "2025-08-20T23:38:47.543071",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Active",
+    "notes": "paid need to confirm",
+    "snooze_days": 180,
+    "review_after": "2026-02-16T23:38:47.543082"
+  },
+  "278109": {
+    "acknowledged_date": "2025-08-20T23:57:27.205562",
+    "acknowledged_by": "user",
+    "reason": "LOW PRIORITY",
+    "status": "Litigation",
+    "notes": "f/u in 3 months ",
+    "snooze_days": 90,
+    "review_after": "2025-11-18T23:57:27.205572"
+  },
+  "354765": {
+    "acknowledged_date": "2025-08-21T00:16:52.725529",
+    "acknowledged_by": "user",
+    "reason": "LITIGATION - Awaiting outcome",
+    "status": "Litigation",
+    "notes": "case is still in litigation ",
+    "snooze_days": 60,
+    "review_after": "2025-10-20T00:16:52.725544"
+  },
+  "310693": {
+    "acknowledged_date": "2025-08-21T00:18:03.763557",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Lien Not Signed",
+    "notes": "waiting to hear back from firm bc they claim it was opaid ",
+    "snooze_days": 60,
+    "review_after": "2025-10-20T00:18:03.763581"
+  },
+  "297256": {
+    "acknowledged_date": "2025-08-21T00:18:49.273813",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Active",
+    "notes": "appears paid will check for paymnets ",
+    "snooze_days": 30,
+    "review_after": "2025-09-20T00:18:49.273824"
+  },
+  "306564": {
+    "acknowledged_date": "2025-08-21T20:59:52.765345",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Lien Not Signed",
+    "notes": "email not on file ",
+    "snooze_days": 30,
+    "review_after": "2025-09-20T20:59:52.765355"
+  },
+  "276825": {
+    "acknowledged_date": "2025-08-21T21:01:38.708142",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Lien Not Signed",
+    "notes": "agreement never got sent to attny for some reason // forwarded him the agreemeent ",
+    "snooze_days": 60,
+    "review_after": "2025-10-20T21:01:38.708152"
+  },
+  "74536": {
+    "acknowledged_date": "2025-08-21T21:05:09.637881",
+    "acknowledged_by": "user",
+    "reason": "REVIEWED - No action needed",
+    "status": "Active",
+    "notes": "looks like transcon charges were paid in 2023 new cahrges are from TNLP and not assigned to us ",
+    "snooze_days": 90,
+    "review_after": "2025-11-19T21:05:09.637892"
+  },
+  "154190": {
+    "acknowledged_date": "2025-08-21T22:21:03.141686",
+    "acknowledged_by": "user",
+    "reason": "LITIGATION - Awaiting outcome",
+    "status": "Litigation",
+    "notes": "case is still pending accurate DOI is 02/14/2019 ",
+    "snooze_days": 90,
+    "review_after": "2025-11-19T22:21:03.141696"
+  },
+  "232984": {
+    "acknowledged_date": "2025-08-21T22:21:56.024880",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Active",
+    "notes": "firm states withdrew representaion asking if dropped ",
+    "snooze_days": 30,
+    "review_after": "2025-09-20T22:21:56.024891"
   }
 }

@@ -32,42 +32,72 @@ class AIService:
         """Default prompt templates if file is missing"""
         return {
             "followup_prompt": """
-            You are drafting a follow-up email for Prohealth Advanced Imaging collections regarding patient {name} (DOI: {doi}).
+            You are a medical collections specialist at Prohealth Advanced Imaging following up on patient {name} (DOI: {doi}).
 
             Previous Email Thread:
             {thread}
 
-            CRITICAL CONSTRAINTS:
-            - ONLY reference information that actually appears in the email thread above
-            - DO NOT mention lien reductions, settlements, or other topics unless explicitly mentioned in the thread
-            - This is collections follow-up - you're checking on case status (pending/settled/dropped)
-            - Common responses from attorneys: "pending", "settled", "dropped", or no response
-            - Be professional but direct - you're following up on medical billing/liens
+            CRITICAL RULES:
+            1. ALWAYS start with "Hello again," - NEVER use attorney names or "Dear [Name]"
+            2. DO NOT mention lien reductions, settlements, or payment amounts unless explicitly discussed in the thread
+            3. DO NOT offer to negotiate or reduce amounts
+            4. DO NOT mention statute of limitations unless specifically relevant
+            5. ONLY reference what actually appears in the email thread
+            6. Keep it SHORT - 2-3 sentences maximum
+            7. End with ONLY "Thank you" - NO name, NO "Dean Hyland", NO "Prohealth Advanced Imaging" (signature is automatic)
 
-            Draft a professional follow-up email as Dean Hyland from Prohealth Advanced Imaging that:
-            1. References the specific last communication from the thread
-            2. Politely requests a case status update
-            3. Does NOT invent or assume information not in the thread
-            4. Stays focused on getting case status for billing purposes
+            Write a brief follow-up email that:
+            - Acknowledges you haven't heard back (if true) OR references their last response
+            - Simply asks for a case status update
+            - Shows this is about Prohealth Advanced Imaging billing/liens
+            
+            Examples of good follow-ups:
+            "Hello again,
 
-            Keep it concise and professional.
+            I am following up on my previous emails requesting the status of this file. Please get back to me when you can."
+            
+            OR if they haven't responded:
+            "Hello again,
+
+            I hope this email finds you well. Just following up on our previous emails as we haven't heard back yet. Could you kindly provide an update on the current status of the Prohealth Advanced Imaging bills?"
+
+            End with just "Thank you" or "Thank you for your attention to this matter" - NO name, NO signature (Gmail adds complete signature automatically).
             """,
             "status_request_prompt": """
-            Draft a professional initial status request email for Prohealth Advanced Imaging collections.
+            You are a medical collections specialist at Prohealth Advanced Imaging requesting status on a personal injury case.
             
             Patient: {name}
-            Date of Injury: {doi} 
-            Attorney: {email}
+            Date of Injury: {doi}
             
-            This is your FIRST contact about this case. Draft an email that:
-            1. Introduces yourself as Dean Hyland from Prohealth Advanced Imaging
-            2. States you're inquiring about the case status for billing/liens purposes
-            3. Asks if the case is pending, settled, or dropped
-            4. Offers to provide medical reports or records if needed
-            5. Requests a response with case status
+            CRITICAL RULES:
+            1. ALWAYS start with "Hello Attorney," - NEVER use law firm names or attorney names
+            2. Keep it SHORT and professional - 2-3 sentences maximum
+            3. DO NOT mention specific dollar amounts
+            4. DO NOT offer settlements or reductions
+            5. Simply request case status
+            6. End with ONLY "Thank you" or "Thank you for your attention to this matter" - NO name, NO signature
             
-            Be professional, concise, and clear about your purpose (medical billing collections).
-            End with just "Thank you" - Gmail will add the signature automatically.
+            Write a brief initial status request that:
+            - States you're from Prohealth Advanced Imaging
+            - References the patient name and DOI
+            - Asks for current case status (pending/settled/dropped)
+            - Mentions this is regarding medical liens/billing
+            
+            Example format:
+            "Hello Attorney,
+
+            I am writing to request a status update on the medical lien case for patient [NAME], who was injured on [DATE]. Please let me know the current status of this case.
+
+            Thank you for your attention to this matter."
+            
+            OR:
+            "Hello Attorney,
+
+            I am reaching out from Prohealth Advanced Imaging regarding our bills for [NAME] (DOI: [DATE]). Could you please provide a status update on this case?
+
+            Thank you."
+
+            End with just "Thank you" or "Thank you for your attention to this matter" - NO name, NO signature (Gmail adds complete signature automatically).
             """
         }
     
@@ -88,31 +118,115 @@ class AIService:
             for thread in thread_messages:
                 all_msgs.extend(thread.get("messages", []))
             
-            # Sort by internal date
-            all_msgs.sort(key=lambda m: int(m.get("internalDate", "0")), reverse=True)
+            # Sort by internal date (oldest first for chronological order)
+            all_msgs.sort(key=lambda m: int(m.get("internalDate", "0")))
             
-            # Create preview of recent messages
+            # Analyze email history
+            from datetime import datetime
+            our_emails_sent = 0
+            their_responses = 0
+            last_our_email_date = None
+            last_their_response_date = None
+            no_response_count = 0
+            
+            # Create detailed preview with analysis
             preview = []
-            for msg in all_msgs[:5]:
+            for msg in all_msgs:
                 sender = next(
                     (h['value'] for h in msg.get("payload", {}).get("headers", []) 
                      if h['name'].lower() == "from"), 
                     ""
                 )
+                
+                # Parse date from internal timestamp (milliseconds since epoch)
+                try:
+                    msg_timestamp = int(msg.get("internalDate", "0")) / 1000
+                    msg_date = datetime.fromtimestamp(msg_timestamp)
+                    date_str = msg_date.strftime("%m/%d/%Y")
+                except:
+                    date_str = "Unknown date"
+                    msg_date = None
+                
                 snippet = msg.get("snippet", "").strip()
-                preview.append(f"{sender}:\n{snippet}\n")
+                
+                # Determine if from us or them
+                is_from_us = 'dean' in sender.lower() or 'prohealth' in sender.lower() or 'transcon' in sender.lower()
+                
+                if is_from_us:
+                    our_emails_sent += 1
+                    if msg_date:
+                        last_our_email_date = msg_date
+                    preview.append(f"[{date_str}] WE SENT:\n{snippet[:200]}\n")
+                else:
+                    their_responses += 1
+                    if msg_date:
+                        last_their_response_date = msg_date
+                    preview.append(f"[{date_str}] ATTORNEY REPLIED:\n{snippet[:200]}\n")
             
-            thread_text = "\n---\n".join(preview)
+            # Calculate no-response situation
+            if our_emails_sent > 0 and their_responses == 0:
+                no_response_count = our_emails_sent
+            elif last_our_email_date and last_their_response_date:
+                if last_our_email_date > last_their_response_date:
+                    # We sent emails after their last response
+                    no_response_count = sum(1 for msg in all_msgs 
+                                           if int(msg.get("internalDate", "0"))/1000 > last_their_response_date.timestamp())
+            
+            # Take only recent messages for context (last 5)
+            thread_text = "\n---\n".join(preview[-5:]) if preview else "No previous emails found"
             
             # DEBUG: Log what thread content we're sending to AI
             logger.info(f"Thread content being sent to AI: {thread_text[:500]}")
             
-            # Build cadence-aware prompt
-            base_prompt = self.prompt_templates["followup_prompt"].format(
-                name=case["Name"],
-                doi=case["DOI"].strftime('%B %d, %Y') if hasattr(case["DOI"], 'strftime') else str(case["DOI"]),
-                thread=thread_text
-            )
+            # Build enhanced prompt with email history analysis
+            enhanced_prompt = f"""
+            You are a medical collections specialist at Prohealth Advanced Imaging following up on patient {case["Name"]} (DOI: {case["DOI"].strftime('%B %d, %Y') if hasattr(case["DOI"], 'strftime') else str(case["DOI"])}).
+
+            EMAIL HISTORY:
+            - Emails sent: {our_emails_sent}
+            - Responses received: {their_responses}
+            {f"- Unanswered emails: {no_response_count}" if no_response_count > 0 else ""}
+            
+            Previous Thread:
+            {thread_text}
+
+            CRITICAL RULES:
+            1. MUST start with "Hello again," or "Hello," - NEVER use names
+            2. DO NOT mention lien reductions, settlements, or payment amounts unless explicitly in the thread
+            3. DO NOT offer to negotiate or reduce amounts
+            4. ONLY reference what's actually in the email thread
+            5. Keep it SHORT - maximum 2-3 sentences
+            6. Ask about case STATUS, not "bills" - use phrases like "status of the case" or "case status"
+            7. Use "in regards to" or "as it relates to" Prohealth Advanced Imaging billing and liens
+            8. NO SIGNATURE - end with just "Thank you" or "Thank you for your time"
+
+            Write a brief follow-up that:
+            {"- Acknowledges we haven't heard back" if no_response_count > 0 else "- References their last response"}
+            {"- Notes this is another follow-up to previous emails" if no_response_count > 1 else ""}
+            - Asks about the status of the case as it relates to Prohealth Advanced Imaging billing and liens
+            - Mentions "in regards to" or "as it relates to" Prohealth Advanced Imaging
+            
+            Good examples based on situation:
+            
+            {'''No response yet:
+            "Hello again,
+            
+            I am following up on my previous emails requesting the status of this file. Please get back to me when you can."''' if no_response_count == 1 else ''''''}
+            
+            {'''Multiple no responses:
+            "Hello again,
+            
+            In regards to Prohealth Advanced Imaging billing and liens, I am following up on my previous emails requesting the status of the case at this time. Please get back to me when you have a moment."''' if no_response_count > 1 else ''''''}
+            
+            {'''They responded before:
+            "Hello again,
+            
+            I wanted to follow up on our last exchange. Could you please provide an updated status on this case?"''' if their_responses > 0 and no_response_count == 0 else ''''''}
+
+            End with ONLY "Thank you" or "Thank you for your time" - NO name, NO signature, NO "Sincerely" or "Best regards" (Gmail adds complete signature automatically).
+            """
+            
+            base_prompt = enhanced_prompt
             
             # DEBUG: Log the full prompt being sent
             logger.info(f"Full prompt being sent to AI: {base_prompt[:800]}")

@@ -723,6 +723,61 @@ class EmailCacheService:
             'transcon'
         ]
     
+    def _get_name_variations(self, patient_name):
+        """Generate variations of a patient name for searching
+        
+        Args:
+            patient_name (str): Original patient name
+            
+        Returns:
+            list: List of name variations to search for
+        """
+        if not patient_name:
+            return []
+        
+        variations = set()
+        
+        # Add original name
+        variations.add(patient_name)
+        
+        # Parse the name components
+        # Handle "Last, First" format
+        if ',' in patient_name:
+            parts = patient_name.split(',', 1)
+            last_name = parts[0].strip()
+            first_name = parts[1].strip() if len(parts) > 1 else ''
+        else:
+            # Assume "First Last" format
+            parts = patient_name.strip().split()
+            if len(parts) >= 2:
+                first_name = parts[0]
+                last_name = ' '.join(parts[1:])  # Handle middle names
+            elif len(parts) == 1:
+                # Single name - could be first or last
+                first_name = parts[0]
+                last_name = parts[0]
+            else:
+                return [patient_name]
+        
+        # Create variations - ONLY FULL NAME (no last-name-only to avoid duplicates)
+        if first_name and last_name:
+            # Standard full name variations
+            variations.add(f"{first_name} {last_name}")  # John Smith
+            variations.add(f"{last_name}, {first_name}")  # Smith, John
+            variations.add(f"{last_name},{first_name}")   # Smith,John (no space)
+            variations.add(f"{first_name.upper()} {last_name.upper()}")  # JOHN SMITH
+            variations.add(f"{last_name.upper()}, {first_name.upper()}")  # SMITH, JOHN
+            variations.add(f"{last_name.upper()},{first_name.upper()}")  # SMITH,JOHN
+            
+            # Mixed case variations
+            variations.add(f"{first_name.lower()} {last_name.lower()}")  # john smith
+            variations.add(f"{last_name.lower()}, {first_name.lower()}")  # smith, john
+            
+            # NO LONGER ADDING JUST LAST NAME - too many false matches
+            # Previous code searched for just "Smith" which caused duplicates
+        
+        return list(variations)
+    
     def get_all_emails_for_case(self, search_query):
         """Get all cached emails matching a search query
         
@@ -736,16 +791,112 @@ class EmailCacheService:
             return []
         
         matching_emails = []
-        search_terms = search_query.lower().split()
         
-        for email in self.cache['emails']:
-            # Check if any search term matches email fields
-            email_text = f"{email.get('subject', '')} {email.get('snippet', '')} {email.get('from', '')} {email.get('to', '')}".lower()
+        # Check if this is a "Last, First" format and handle accordingly
+        if ',' in search_query:
+            # It's already in Last, First format - search as is and also try First Last
+            search_variations = [search_query]
+            parts = search_query.split(',', 1)
+            if len(parts) == 2:
+                last = parts[0].strip()
+                first = parts[1].strip()
+                search_variations.append(f"{first} {last}")
+        else:
+            search_variations = [search_query]
+        
+        for search_variant in search_variations:
+            search_terms = search_variant.lower().split()
             
-            if any(term in email_text for term in search_terms):
-                matching_emails.append(email)
+            for email in self.cache['emails']:
+                # Check email fields - include body for better matching
+                email_text = f"{email.get('subject', '')} {email.get('snippet', '')} {email.get('body', '')} {email.get('from', '')} {email.get('to', '')}".lower()
+                
+                # For patient names, we want ALL terms to match (first AND last name)
+                # This avoids getting emails for "John Doe" when searching for "John Smith"
+                if len(search_terms) > 1:
+                    # Multiple terms - require ALL to match (for full names)
+                    if all(term in email_text for term in search_terms):
+                        if email not in matching_emails:
+                            matching_emails.append(email)
+                else:
+                    # Single term - match if present
+                    if any(term in email_text for term in search_terms):
+                        if email not in matching_emails:
+                            matching_emails.append(email)
         
         return matching_emails
+    
+    def search_emails_by_patient_name(self, patient_name, doi=None):
+        """Search emails by patient name with optional DOI filtering
+        
+        Args:
+            patient_name (str): Patient's full name
+            doi (str/datetime, optional): Date of injury for duplicate name handling
+            
+        Returns:
+            list: Matching emails from cache
+        """
+        if not patient_name:
+            return []
+        
+        # Create multiple search variations for the name
+        name_variations = self._get_name_variations(patient_name)
+        logger.info(f"Searching for patient '{patient_name}' using variations: {name_variations}")
+        
+        # Search for all variations and combine results
+        all_emails = []
+        seen_ids = set()
+        
+        for variation in name_variations:
+            variation_emails = self.get_all_emails_for_case(variation)
+            if variation_emails:
+                logger.debug(f"Found {len(variation_emails)} emails for variation '{variation}'")
+            for email in variation_emails:
+                email_id = email.get('id')
+                if email_id and email_id not in seen_ids:
+                    seen_ids.add(email_id)
+                    all_emails.append(email)
+        
+        emails = all_emails
+        logger.info(f"Total unique emails found for '{patient_name}': {len(emails)}")
+        
+        # If we have a DOI and multiple results, filter by DOI to ensure accuracy
+        # Lower threshold since we're only searching full names now
+        if doi and len(emails) > 3:  # Filter if we have multiple results
+            from datetime import datetime
+            
+            if isinstance(doi, datetime):
+                # Try multiple date formats
+                doi_formats = [
+                    doi.strftime('%m/%d/%Y'),
+                    doi.strftime('%m/%d/%y'),
+                    doi.strftime('%Y-%m-%d'),
+                    doi.strftime('%B %d, %Y'),
+                    doi.strftime('%b %d, %Y')
+                ]
+                # Add format without leading zeros (platform-specific)
+                try:
+                    doi_formats.append(doi.strftime('%-m/%-d/%Y'))
+                    doi_formats.append(doi.strftime('%-m/%-d/%y'))
+                except:
+                    # Windows doesn't support %-m/%-d, try alternative
+                    doi_formats.append(f"{doi.month}/{doi.day}/{doi.year}")
+                    doi_formats.append(f"{doi.month}/{doi.day}/{str(doi.year)[2:]}")
+            else:
+                doi_formats = [str(doi)]
+            
+            # Filter emails that contain the DOI
+            filtered_emails = []
+            for email in emails:
+                email_text = f"{email.get('subject', '')} {email.get('snippet', '')} {email.get('body', '')}".lower()
+                if any(doi_str.lower() in email_text for doi_str in doi_formats):
+                    filtered_emails.append(email)
+            
+            # Return filtered results if we found any, otherwise return all
+            if filtered_emails:
+                return filtered_emails
+        
+        return emails
     
     def get_case_emails(self, pv_number):
         """Get all emails related to a specific PV number

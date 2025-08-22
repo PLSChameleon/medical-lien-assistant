@@ -453,21 +453,20 @@ class BulkEmailService:
                 doi = case_data.get('doi', '')
                 body = f"""Dear Counsel,
 
-I am writing to inquire about the current status of the above-referenced case.
+In regards to Prohealth Advanced Imaging billing and liens for the above-referenced case.
 
 Our records indicate that the date of injury for this matter was {doi}, which is now over two years ago. Under California Code of Civil Procedure Section 335.1, the statute of limitations for personal injury claims is generally two years from the date of injury.
 
 Could you please provide an update on:
 1. Whether litigation has been filed in this matter
-2. The current status of any settlement negotiations
+2. The current status of any settlement negotiations  
 3. Whether there are any tolling agreements or other factors that would extend the statute of limitations
 
 We need this information to properly manage our lien and determine next steps. If the statute of limitations has expired without litigation being filed, please advise how you intend to proceed with this matter.
 
 Please respond at your earliest convenience so we can update our records accordingly.
 
-Thank you for your attention to this matter.
-"""
+Thank you for your attention to this matter"""
                 
                 # Modify for test mode
                 original_to = case_data["attorney_email"]
@@ -547,14 +546,14 @@ Thank you for your attention to this matter.
                 attorney_email = self.test_email
                 subject = f"[TEST MODE - Original To: {original_to}] {subject}"
             
-            # Email body
+            # Email body - NO SIGNATURE as Gmail adds it automatically
             body = f"""{greeting}
 
 In regards to Prohealth Advanced Imaging billing and liens for {name}.
 
 {status_line} {followup_line}{extra_line}
 
-Thank you.
+Thank you for your time
 
 Reference #: {pv}"""
             

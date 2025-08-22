@@ -21,14 +21,26 @@ SESSION_CMS_NOTES_LOG = "session_cms_notes.log"  # All CMS notes added
 
 def log_session_email(pid, recipient_email, email_type="FOLLOW-UP"):
     """Log email sent - goes to PENDING queue until CMS note is added"""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    log_entry = f"[{timestamp}] PID: {pid} | Email Type: {email_type} | Sent to: {recipient_email}\n"
-    
-    # Add to pending queue (these need CMS notes)
-    with open(SESSION_EMAILS_PENDING_LOG, "a", encoding="utf-8") as f:
-        f.write(log_entry)
-    
-    logger.info(f"📧 Email logged to pending queue: PID {pid} → {recipient_email}")
+    try:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_entry = f"[{timestamp}] PID: {pid} | Email Type: {email_type} | Sent to: {recipient_email}\n"
+        
+        # Add to pending queue (these need CMS notes)
+        with open(SESSION_EMAILS_PENDING_LOG, "a", encoding="utf-8") as f:
+            f.write(log_entry)
+            f.flush()  # Force write to disk
+        
+        logger.info(f"📧 Email logged to pending queue: PID {pid} → {recipient_email}")
+        
+        # Verify it was written
+        if os.path.exists(SESSION_EMAILS_PENDING_LOG):
+            size = os.path.getsize(SESSION_EMAILS_PENDING_LOG)
+            logger.info(f"[DEBUG] Pending log file size after write: {size} bytes")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to log session email: {e}")
+        import traceback
+        traceback.print_exc()
 
 def log_cms_note_added(pid, recipient_email, email_type="FOLLOW-UP"):
     """Log CMS note added and move email from pending to processed"""
@@ -514,6 +526,11 @@ class CMSIntegrationService:
             cls._persistent_context = None
             cls._persistent_page = None
             cls._persistent_logged_in = False
+            if cls._persistent_playwright:
+                try:
+                    await cls._persistent_playwright.stop()
+                except:
+                    pass
             cls._persistent_playwright = None
     
     @classmethod
@@ -546,7 +563,7 @@ class CMSIntegrationService:
                 if "'NoneType' object has no attribute 'send'" in str(e):
                     logger.warning("   Browser connection corrupted - cleaning up session")
                     try:
-                        await cls.close_persistent_session()
+                        await cls.cleanup_persistent_session()
                     except:
                         pass  # Ignore cleanup errors
                 
@@ -561,16 +578,27 @@ class CMSIntegrationService:
         try:
             # Check if we should use persistent session
             if self.use_persistent_session:
+                # First check if persistent session exists and is healthy
                 if self._persistent_page and self._persistent_logged_in:
-                    logger.info("✅ Using existing persistent CMS session (skipping health check)")
-                    self.browser = self._persistent_browser
-                    self.context = self._persistent_context
-                    self.page = self._persistent_page
-                    self.logged_in = self._persistent_logged_in
-                    return
+                    # Perform health check to ensure connection is still valid
+                    logger.info("🔍 Checking persistent CMS session health...")
+                    is_healthy = await self.is_persistent_session_healthy()
+                    
+                    if is_healthy:
+                        logger.info("✅ Using existing healthy persistent CMS session")
+                        self.browser = self._persistent_browser
+                        self.context = self._persistent_context
+                        self.page = self._persistent_page
+                        self.logged_in = self._persistent_logged_in
+                        return
+                    else:
+                        logger.warning("❌ Persistent session is unhealthy - needs reinitialization")
+                        logger.info("💡 Please run 'init cms' again to create a new session")
+                        raise Exception("Persistent CMS session is corrupted - please reinitialize with 'init cms'")
                 else:
                     logger.warning("❌ No persistent session available")
                     logger.info("💡 You need to run 'init cms' first")
+                    raise Exception("No persistent CMS session - please run 'init cms' first")
             
             logger.info("Starting new CMS session...")
             
@@ -700,27 +728,48 @@ class CMSIntegrationService:
                 logger.error(f"Cannot access page URL: {url_error}")
                 raise Exception(f"Page connection broken: {url_error}")
             
-            # Search for the CMS number (PID) - try alternative approach
+            # Ensure we're on the correct page
+            if "AddCollecter" not in current_url:
+                logger.info("Navigating to Collectors page...")
+                await self.page.goto("https://cms.transconfinancialinc.com/CMS/Collecter/AddCollecter", timeout=30000)
+                await asyncio.sleep(2)
+            
+            # Search for the CMS number (PID) - try multiple methods
             logger.info(f"Attempting to fill search field with: {cms_number}")
             
-            # Try clicking the search field first, then typing
+            search_filled = False
+            
+            # Method 1: Try using fill() directly
             try:
-                logger.info("Clicking search field...")
-                await self.page.click('input#txtSearch')
+                logger.info("Method 1: Using fill() on search field...")
+                await self.page.fill('input#txtSearch', str(cms_number))
                 await asyncio.sleep(0.5)
+                search_filled = True
+            except Exception as e1:
+                logger.warning(f"Method 1 failed: {e1}")
                 
-                logger.info("Clearing search field...")
-                await self.page.keyboard.press('Control+a')
-                await self.page.keyboard.press('Delete')
-                await asyncio.sleep(0.5)
-                
-                logger.info(f"Typing: {cms_number}")
-                await self.page.keyboard.type(str(cms_number))
-                await asyncio.sleep(0.5)
-                
-            except Exception as fill_error:
-                logger.error(f"Error during search field interaction: {fill_error}")
-                raise Exception(f"Failed to fill search field: {fill_error}")
+                # Method 2: Try clicking then typing
+                try:
+                    logger.info("Method 2: Click and type...")
+                    await self.page.click('input#txtSearch')
+                    await asyncio.sleep(0.5)
+                    await self.page.keyboard.press('Control+a')
+                    await self.page.keyboard.type(str(cms_number))
+                    await asyncio.sleep(0.5)
+                    search_filled = True
+                except Exception as e2:
+                    logger.warning(f"Method 2 failed: {e2}")
+                    
+                    # Method 3: Try using locator
+                    try:
+                        logger.info("Method 3: Using locator...")
+                        search_field = self.page.locator('input#txtSearch')
+                        await search_field.fill(str(cms_number))
+                        await asyncio.sleep(0.5)
+                        search_filled = True
+                    except Exception as e3:
+                        logger.error(f"Method 3 failed: {e3}")
+                        raise Exception(f"All search field methods failed. Last error: {e3}")
             
             logger.info("Search field filled, pressing Enter...")
             await self.page.keyboard.press('Enter')
@@ -749,17 +798,17 @@ class CMSIntegrationService:
     
     async def add_follow_up_note(self, cms_number, recipient_email):
         """Add a follow-up email note"""
-        note_text = f"(TEST) FOLLOW UP EMAIL SENT TO {recipient_email.upper()}"
+        note_text = f"FOLLOW UP EMAIL SENT TO {recipient_email.upper()}"
         return await self.add_note(cms_number, note_text)
     
     async def add_status_request_note(self, cms_number, recipient_email):
         """Add a status request email note"""
-        note_text = f"(TEST) STATUS REQUEST SENT TO {recipient_email.upper()}"
+        note_text = f"STATUS REQUEST SENT TO {recipient_email.upper()}"
         return await self.add_note(cms_number, note_text)
     
     async def add_general_email_note(self, cms_number, recipient_email, email_type="EMAIL"):
         """Add a general email note"""
-        note_text = f"(TEST) {email_type.upper()} SENT TO {recipient_email.upper()}"
+        note_text = f"{email_type.upper()} SENT TO {recipient_email.upper()}"
         return await self.add_note(cms_number, note_text)
     
     async def add_test_email_note(self, cms_number, recipient_info, email_type="test_bulk_status_request"):
@@ -767,10 +816,10 @@ class CMSIntegrationService:
         # recipient_info contains the test mode details
         if "TEST MODE" in recipient_info:
             # Format: "TEST MODE - Email sent to test@email.com (intended for attorney@firm.com)"
-            note_text = f"🧪 TEST MODE EMAIL: {recipient_info}"
+            note_text = f"(TEST MODE) EMAIL SENT TO {recipient_info}"
         else:
-            # Fallback format
-            note_text = f"🧪 TEST MODE: {email_type.replace('test_', '').replace('_', ' ').upper()} - {recipient_info.upper()}"
+            # Fallback format for test emails
+            note_text = f"(TEST MODE) {email_type.replace('test_', '').replace('_', ' ').upper()} - {recipient_info.upper()}"
         
         return await self.add_note(cms_number, note_text)
 
@@ -784,9 +833,24 @@ async def add_cms_note_for_email(case_info, email_type, recipient_email):
         email_type (str): 'follow_up', 'status_request', or 'general'
         recipient_email (str): Email address the email was sent to
     """
-    cms_number = case_info.get("CMS")  # This is actually the PID
+    # DEBUG: Log what we received
+    logger.info(f"[DEBUG] add_cms_note_for_email called with case_info keys: {case_info.keys() if isinstance(case_info, dict) else 'Not a dict'}")
+    if isinstance(case_info, dict):
+        logger.info(f"[DEBUG] CMS field: {case_info.get('CMS')}, PV field: {case_info.get('PV')}")
+    
+    # Try both uppercase and lowercase versions since different parts of the code use different cases
+    cms_number = case_info.get("CMS") or case_info.get("cms")
     if not cms_number:
-        logger.warning(f"No CMS number (PID) found for case {case_info.get('PV', 'unknown')}")
+        # Also check if PID is stored in different field names
+        cms_number = case_info.get("PID") or case_info.get("pid")
+    
+    if not cms_number:
+        # Only warn if we also can't find a PV number (might be a real issue)
+        pv = case_info.get('PV') or case_info.get('pv')
+        if pv:
+            logger.warning(f"No CMS/PID number found for case PV {pv}")
+        else:
+            logger.warning(f"No CMS/PID number found for unknown case")
         return False
     
     # Log this email for batch processing later
@@ -801,7 +865,7 @@ async def add_cms_note_for_email(case_info, email_type, recipient_email):
 async def process_session_cms_notes():
     """
     Process all PENDING session emails and add CMS notes
-    Uses the proven login_bot.py approach for reliable batch processing
+    Creates a new browser session in the same process for reliability
     Emails are automatically moved from pending to processed queue
     """
     pending_emails = load_pending_emails()
@@ -812,12 +876,16 @@ async def process_session_cms_notes():
     
     logger.info(f"🔄 Processing {len(pending_emails)} pending emails for CMS notes...")
     
-    cms_service = CMSIntegrationService(use_persistent_session=True)
+    # Always use non-persistent session for reliability (creates new browser in same process)
+    cms_service = CMSIntegrationService(use_persistent_session=False)
     success_count = 0
     fail_count = 0
     
     try:
+        # Start a fresh browser session in this process
+        logger.info("🌐 Starting new CMS browser session...")
         await cms_service.start_session()
+        logger.info("✅ CMS session started successfully")
         
         for pid, email_info in pending_emails.items():
             email = email_info['email']
@@ -859,7 +927,9 @@ async def process_session_cms_notes():
         return False
         
     finally:
+        logger.info("🗑️ Cleaning up browser session...")
         await cms_service.cleanup()
+        logger.info("✅ Browser session closed")
 
 # Function to get session statistics
 def show_session_status():
