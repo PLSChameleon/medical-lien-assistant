@@ -168,8 +168,8 @@ class TemplateSummaryService:
         received_emails = []
         
         for email in emails:
-            from_addr = email.get('from', '').lower()
-            to_addr = email.get('to', '').lower()
+            from_addr = (email.get('from') or '').lower()
+            to_addr = (email.get('to') or '').lower()
             is_from_us = any(domain in from_addr for domain in our_domains)
             
             if is_from_us:
@@ -180,7 +180,7 @@ class TemplateSummaryService:
                 analysis['emails_received'] += 1
             
             # Check for key phrases
-            body = email.get('body', '').lower() + ' ' + email.get('snippet', '').lower()
+            body = (email.get('body') or '').lower() + ' ' + (email.get('snippet') or '').lower()
             
             if any(re.search(pattern, body) for pattern in self.settlement_patterns):
                 analysis['settlement_mentioned'] = True
@@ -266,8 +266,8 @@ class TemplateSummaryService:
         
         for email in emails:
             # Check email body
-            body = email.get('body', '')
-            snippet = email.get('snippet', '')
+            body = email.get('body') or ''
+            snippet = email.get('snippet') or ''
             full_text = f"{body} {snippet}"
             
             # Find all email addresses
@@ -523,7 +523,7 @@ class TemplateSummaryService:
             lines.append("-" * 40)
             for email in emails[:5]:
                 date = self._format_date(email.get('date'))
-                from_addr = email.get('from', '')
+                from_addr = email.get('from') or ''
                 is_from_us = 'prohealth' in from_addr.lower() or 'transcon' in from_addr.lower()
                 direction = ">> SENT" if is_from_us else "<< RECEIVED"
                 subject = email.get('subject', 'No Subject')[:50]
@@ -613,11 +613,11 @@ class TemplateSummaryService:
         sorted_emails = sorted(emails, key=lambda x: x.get('date', ''))
         
         for email in sorted_emails:
-            from_addr = email.get('from', '').lower()
-            to_addr = email.get('to', '').lower()
-            subject = email.get('subject', '')
-            snippet = email.get('snippet', '')
-            body = email.get('body', snippet)  # Use body if available, else snippet
+            from_addr = (email.get('from') or '').lower()
+            to_addr = (email.get('to') or '').lower()
+            subject = email.get('subject') or ''
+            snippet = email.get('snippet') or ''
+            body = email.get('body') or snippet  # Use body if available, else snippet
             date = self._format_date(email.get('date'))
             
             # Determine if sent or received
