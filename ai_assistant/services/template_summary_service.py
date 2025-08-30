@@ -440,6 +440,7 @@ class TemplateSummaryService:
         balance = case_data.get('Balance', 0) if case_data else 0
         attorney = case_data.get('Attorney Email', 'Unknown') if case_data else 'Unknown'
         law_firm = case_data.get('Law Firm', 'Unknown') if case_data else 'Unknown'
+        cms_number = case_data.get('CMS #', 'Unknown') if case_data else 'Unknown'
         
         # Format dates
         if isinstance(doi, datetime):
@@ -453,6 +454,7 @@ class TemplateSummaryService:
         lines.append(f"CASE SUMMARY - {name}")
         lines.append(f"{'='*60}")
         lines.append(f"PV #: {pv}")
+        lines.append(f"CMS #: {cms_number}")
         lines.append(f"DOI: {doi_str}")
         lines.append(f"Balance: ${balance:,.2f}")
         lines.append(f"Law Firm: {law_firm}")
@@ -573,6 +575,54 @@ class TemplateSummaryService:
         lines.append("")
         lines.append(f"Summary generated: {datetime.now().strftime('%m/%d/%Y %I:%M %p')}")
         lines.append("=" * 60)
+        
+        # Full Email History (at the very bottom as requested)
+        if emails and isinstance(emails, list):
+            lines.append("")
+            lines.append("")
+            lines.append("=" * 60)
+            lines.append("FULL EMAIL HISTORY")
+            lines.append("=" * 60)
+            lines.append("")
+            
+            # Sort emails by date (oldest first for chronological order)
+            sorted_emails = sorted(emails, key=lambda x: x.get('date', ''))
+            
+            for email in sorted_emails:
+                # Extract email details
+                date = self._format_date(email.get('date'))
+                from_addr = email.get('from') or 'Unknown'
+                to_addr = email.get('to') or 'Unknown'
+                subject = email.get('subject') or 'No Subject'
+                body = email.get('body') or email.get('snippet') or ''
+                
+                # Determine direction
+                is_from_us = any(domain in from_addr.lower() for domain in ['prohealth', 'transcon', 'dean'])
+                
+                if is_from_us:
+                    header = f"{date} (SENT To: {to_addr})"
+                else:
+                    header = f"{date} (RECEIVED From: {from_addr})"
+                
+                lines.append("-" * 60)
+                lines.append(header)
+                lines.append(f"Subject: {subject}")
+                lines.append("-" * 60)
+                
+                # Add the full email body
+                if body:
+                    # Clean up the body text a bit for display
+                    body_lines = body.strip().split('\n')
+                    for line in body_lines:
+                        lines.append(line)
+                else:
+                    lines.append("[No email body available]")
+                
+                lines.append("")  # Add spacing between emails
+            
+            lines.append("=" * 60)
+            lines.append("END OF EMAIL HISTORY")
+            lines.append("=" * 60)
         
         return "\n".join(lines)
     

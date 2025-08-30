@@ -133,5 +133,50 @@
     "notes": "firm states withdrew representaion asking if dropped ",
     "snooze_days": 30,
     "review_after": "2025-09-20T22:21:56.024891"
+  },
+  "375954": {
+    "acknowledged_date": "2025-08-29T21:07:43.785267",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Active",
+    "notes": "file is closed paid and settled by WCPI ",
+    "snooze_days": 0,
+    "review_after": null
+  },
+  "313100": {
+    "acknowledged_date": "2025-08-29T21:11:21.157674",
+    "acknowledged_by": "user",
+    "reason": "LITIGATION - Awaiting outcome",
+    "status": "Litigation",
+    "notes": "attorney states file in litigation will wait to follow up in a few months ",
+    "snooze_days": 60,
+    "review_after": "2025-10-28T21:11:21.157685"
+  },
+  "254998": {
+    "acknowledged_date": "2025-08-29T21:11:38.167255",
+    "acknowledged_by": "user",
+    "reason": "LITIGATION - Awaiting outcome",
+    "status": "Active",
+    "notes": "b&b gonna wait it out ",
+    "snooze_days": 30,
+    "review_after": "2025-09-28T21:11:38.167267"
+  },
+  "306995": {
+    "acknowledged_date": "2025-08-29T21:11:52.807902",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Active",
+    "notes": "need to find attorney contact information ",
+    "snooze_days": 90,
+    "review_after": "2025-11-27T21:11:52.807912"
+  },
+  "106370": {
+    "acknowledged_date": "2025-08-29T21:25:35.436825",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Lien Not Signed",
+    "notes": "2024 doi not assigned to transcon ",
+    "snooze_days": 0,
+    "review_after": null
   }
 }
