@@ -430,3 +430,91 @@ class GmailService:
         except Exception as e:
             logger.error(f"Error extracting message body: {e}")
             return ""
+    
+    def get_organized_threads(self, query, max_threads=10):
+        """
+        Get and organize email threads for a case with detailed thread information
+        
+        Args:
+            query (str): Gmail search query
+            max_threads (int): Maximum number of unique threads to return
+            
+        Returns:
+            list: List of organized thread dictionaries with metadata
+        """
+        try:
+            # Search for messages
+            messages = self.search_messages(query, max_results=50)  # Get more to find unique threads
+            
+            if not messages:
+                return []
+            
+            # Organize by thread
+            threads_dict = {}
+            
+            for msg in messages:
+                thread_id = msg.get('thread_id')
+                if not thread_id:
+                    continue
+                
+                # Initialize thread if not seen
+                if thread_id not in threads_dict:
+                    threads_dict[thread_id] = {
+                        'thread_id': thread_id,
+                        'messages': [],
+                        'subject': msg.get('subject', 'No Subject'),
+                        'snippet': msg.get('snippet', ''),
+                        'participants': set(),
+                        'last_date': None,
+                        'first_date': None,
+                        'message_count': 0,
+                        'has_attorney_response': False,
+                        'last_sender': None
+                    }
+                
+                # Add message to thread
+                threads_dict[thread_id]['messages'].append(msg)
+                threads_dict[thread_id]['message_count'] += 1
+                
+                # Track participants
+                if msg.get('from'):
+                    threads_dict[thread_id]['participants'].add(msg['from'])
+                    threads_dict[thread_id]['last_sender'] = msg['from']
+                
+                # Track dates
+                msg_date = msg.get('date')
+                if msg_date:
+                    if not threads_dict[thread_id]['last_date'] or msg_date > threads_dict[thread_id]['last_date']:
+                        threads_dict[thread_id]['last_date'] = msg_date
+                    if not threads_dict[thread_id]['first_date'] or msg_date < threads_dict[thread_id]['first_date']:
+                        threads_dict[thread_id]['first_date'] = msg_date
+                
+                # Check if attorney responded
+                if msg.get('from') and '@' in msg.get('from', ''):
+                    # Simple check: if email is not from our domain, it's likely attorney response
+                    if 'plschameleon' not in msg['from'].lower():
+                        threads_dict[thread_id]['has_attorney_response'] = True
+            
+            # Convert to list and sort
+            threads_list = list(threads_dict.values())
+            
+            # Sort by priority:
+            # 1. Most recent activity first
+            # 2. Threads with attorney responses get slight priority
+            threads_list.sort(key=lambda x: (
+                x['has_attorney_response'],  # True (1) comes after False (0), so attorney responses first
+                x['last_date'] if x['last_date'] else ''
+            ), reverse=True)
+            
+            # Convert participant sets to lists for JSON serialization
+            for thread in threads_list:
+                thread['participants'] = list(thread['participants'])
+                # Keep only essential message data to reduce memory
+                thread['messages'] = thread['messages'][:3]  # Keep only last 3 messages for context
+            
+            # Limit to max_threads
+            return threads_list[:max_threads]
+            
+        except Exception as e:
+            logger.error(f"Error organizing threads: {e}")
+            return []

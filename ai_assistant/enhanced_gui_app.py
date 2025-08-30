@@ -827,6 +827,196 @@ class CaseAcknowledgmentDialog(QDialog):
         }
 
 
+class ThreadSelectorDialog(QDialog):
+    """Dialog for selecting which email thread to reply to"""
+    
+    def __init__(self, threads, case, parent=None):
+        super().__init__(parent)
+        self.threads = threads
+        self.case = case
+        self.selected_thread = None
+        self.start_new_thread = False
+        self.init_ui()
+    
+    def init_ui(self):
+        self.setWindowTitle("Select Email Thread")
+        self.setMinimumSize(900, 600)
+        
+        layout = QVBoxLayout()
+        
+        # Header
+        header_label = QLabel(f"<h3>Select Email Thread for {self.case.get('Name', '')}</h3>")
+        layout.addWidget(header_label)
+        
+        # Info label
+        info_label = QLabel("Choose which email thread to reply to, or start a new conversation:")
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+        
+        # Thread list widget
+        self.thread_list = QListWidget()
+        self.thread_list.setSelectionMode(QListWidget.SingleSelection)
+        
+        # Add threads to list
+        for thread in self.threads:
+            item = QListWidgetItem()
+            widget = self.create_thread_widget(thread)
+            item.setSizeHint(widget.sizeHint())
+            self.thread_list.addItem(item)
+            self.thread_list.setItemWidget(item, widget)
+            item.setData(Qt.UserRole, thread)
+        
+        # Select first thread by default
+        if self.threads:
+            self.thread_list.setCurrentRow(0)
+        
+        layout.addWidget(self.thread_list)
+        
+        # New thread option
+        new_thread_layout = QHBoxLayout()
+        self.new_thread_checkbox = QCheckBox("Start a new email thread instead")
+        self.new_thread_checkbox.toggled.connect(self.on_new_thread_toggled)
+        new_thread_layout.addWidget(self.new_thread_checkbox)
+        new_thread_layout.addStretch()
+        layout.addLayout(new_thread_layout)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        
+        select_btn = QPushButton("✅ Select Thread")
+        select_btn.clicked.connect(self.accept_selection)
+        select_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                padding: 8px 16px;
+                font-weight: bold;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        
+        cancel_btn = QPushButton("❌ Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                padding: 8px 16px;
+                font-weight: bold;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #da190b;
+            }
+        """)
+        
+        button_layout.addStretch()
+        button_layout.addWidget(select_btn)
+        button_layout.addWidget(cancel_btn)
+        layout.addLayout(button_layout)
+        
+        self.setLayout(layout)
+    
+    def create_thread_widget(self, thread):
+        """Create a widget to display thread information"""
+        widget = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Parse thread data
+        subject = thread.get('subject', 'No Subject')
+        last_date = thread.get('last_date', 'Unknown date')
+        message_count = thread.get('message_count', 0)
+        last_sender = thread.get('last_sender', 'Unknown')
+        has_response = thread.get('has_attorney_response', False)
+        thread_id = thread.get('thread_id', '')
+        snippet = thread.get('snippet', '')
+        
+        # Thread status indicator
+        if has_response:
+            status_icon = "✅"
+            status_text = "Attorney responded"
+            status_color = "#4CAF50"
+        else:
+            status_icon = "⏳"
+            status_text = "Awaiting response"
+            status_color = "#FF9800"
+        
+        # Header with subject and status
+        header_layout = QHBoxLayout()
+        subject_label = QLabel(f"<b>{subject}</b>")
+        header_layout.addWidget(subject_label)
+        header_layout.addStretch()
+        
+        status_label = QLabel(f"{status_icon} {status_text}")
+        status_label.setStyleSheet(f"color: {status_color}; font-weight: bold;")
+        header_layout.addWidget(status_label)
+        layout.addLayout(header_layout)
+        
+        # Thread metadata
+        meta_text = f"📧 {message_count} messages | Last activity: {last_date} | From: {last_sender}"
+        meta_label = QLabel(meta_text)
+        meta_label.setStyleSheet("color: #666; font-size: 11px;")
+        layout.addWidget(meta_label)
+        
+        # Snippet preview
+        if snippet:
+            snippet_label = QLabel(f"<i>{snippet[:150]}{'...' if len(snippet) > 150 else ''}</i>")
+            snippet_label.setWordWrap(True)
+            snippet_label.setStyleSheet("color: #888; font-size: 10px; margin-top: 5px;")
+            layout.addWidget(snippet_label)
+        
+        # Thread ID (small, for reference)
+        thread_id_label = QLabel(f"Thread ID: {thread_id[:20]}...")
+        thread_id_label.setStyleSheet("color: #AAA; font-size: 9px; margin-top: 3px;")
+        layout.addWidget(thread_id_label)
+        
+        widget.setLayout(layout)
+        
+        # Style the widget
+        widget.setStyleSheet("""
+            QWidget {
+                background-color: #f5f5f5;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+            }
+            QWidget:hover {
+                background-color: #e8e8e8;
+                border: 1px solid #bbb;
+            }
+        """)
+        
+        return widget
+    
+    def on_new_thread_toggled(self, checked):
+        """Handle new thread checkbox toggle"""
+        if checked:
+            self.thread_list.setEnabled(False)
+            self.thread_list.clearSelection()
+        else:
+            self.thread_list.setEnabled(True)
+            if self.threads:
+                self.thread_list.setCurrentRow(0)
+    
+    def accept_selection(self):
+        """Accept the selected thread or new thread option"""
+        if self.new_thread_checkbox.isChecked():
+            self.start_new_thread = True
+            self.selected_thread = None
+        else:
+            current_item = self.thread_list.currentItem()
+            if current_item:
+                self.selected_thread = current_item.data(Qt.UserRole)
+            else:
+                QMessageBox.warning(self, "No Selection", "Please select a thread or choose to start a new thread.")
+                return
+        
+        self.accept()
+
+
 class EmailDraftDialog(QDialog):
     """Dialog for reviewing and editing email drafts"""
     
@@ -1697,65 +1887,14 @@ class BulkEmailWidget(QWidget):
         """Draft a follow-up email for a case from the bulk email view"""
         try:
             pv = case_data.get('pv', '')
-            name = case_data.get('name', '')
-            attorney_email = case_data.get('attorney_email', '')
             
             if not pv:
                 QMessageBox.warning(self, "No Case", "No case data available.")
                 return
             
-            # Generate follow-up email
-            from templates.followup_template import generate_followup_email
-            
-            # Get full case data
-            full_case = self.parent_window.case_manager.get_case_by_pv(pv) if self.parent_window else None
-            if not full_case:
-                full_case = {'PV': pv, 'Name': name, 'Attorney Email': attorney_email}
-            
-            email_data = generate_followup_email(full_case)
-            subject = email_data['subject']
-            body = email_data['body']
-            
-            # Show email draft dialog
-            dialog = QDialog(self)
-            dialog.setWindowTitle(f"Follow-up Email - {name}")
-            dialog.setMinimumSize(600, 500)
-            
-            layout = QVBoxLayout()
-            
-            # Subject field
-            layout.addWidget(QLabel("Subject:"))
-            subject_input = QLineEdit(subject)
-            layout.addWidget(subject_input)
-            
-            # Body field
-            layout.addWidget(QLabel("Body:"))
-            body_text = QTextEdit()
-            body_text.setPlainText(body)
-            layout.addWidget(body_text)
-            
-            # Buttons
-            button_layout = QHBoxLayout()
-            
-            send_btn = QPushButton("Send Email")
-            send_btn.clicked.connect(lambda: self.send_individual_email(
-                attorney_email, subject_input.text(), body_text.toPlainText(), pv, dialog
-            ))
-            button_layout.addWidget(send_btn)
-            
-            copy_btn = QPushButton("Copy to Clipboard")
-            copy_btn.clicked.connect(lambda: self.copy_to_clipboard(
-                subject_input.text(), body_text.toPlainText()
-            ))
-            button_layout.addWidget(copy_btn)
-            
-            cancel_btn = QPushButton("Cancel")
-            cancel_btn.clicked.connect(dialog.reject)
-            button_layout.addWidget(cancel_btn)
-            
-            layout.addLayout(button_layout)
-            dialog.setLayout(layout)
-            dialog.exec_()
+            # Use the main draft_followup_by_pv method for consistency
+            if self.parent_window:
+                self.parent_window.draft_followup_by_pv(pv)
             
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to draft follow-up: {str(e)}")
@@ -1764,66 +1903,14 @@ class BulkEmailWidget(QWidget):
         """Draft a status request email for a case from the bulk email view"""
         try:
             pv = case_data.get('pv', '')
-            name = case_data.get('name', '')
-            attorney_email = case_data.get('attorney_email', '')
-            doi = case_data.get('doi', '')
             
             if not pv:
                 QMessageBox.warning(self, "No Case", "No case data available.")
                 return
             
-            # Generate status request email
-            from templates.status_request import generate_status_request_email
-            
-            # Get full case data
-            full_case = self.parent_window.case_manager.get_case_by_pv(pv) if self.parent_window else None
-            if not full_case:
-                full_case = {'PV': pv, 'Name': name, 'DOI': doi, 'Attorney Email': attorney_email}
-            
-            email_data = generate_status_request_email(full_case)
-            subject = email_data['subject']
-            body = email_data['body']
-            
-            # Show email draft dialog
-            dialog = QDialog(self)
-            dialog.setWindowTitle(f"Status Request - {name}")
-            dialog.setMinimumSize(600, 500)
-            
-            layout = QVBoxLayout()
-            
-            # Subject field
-            layout.addWidget(QLabel("Subject:"))
-            subject_input = QLineEdit(subject)
-            layout.addWidget(subject_input)
-            
-            # Body field
-            layout.addWidget(QLabel("Body:"))
-            body_text = QTextEdit()
-            body_text.setPlainText(body)
-            layout.addWidget(body_text)
-            
-            # Buttons
-            button_layout = QHBoxLayout()
-            
-            send_btn = QPushButton("Send Email")
-            send_btn.clicked.connect(lambda: self.send_individual_email(
-                attorney_email, subject_input.text(), body_text.toPlainText(), pv, dialog
-            ))
-            button_layout.addWidget(send_btn)
-            
-            copy_btn = QPushButton("Copy to Clipboard")
-            copy_btn.clicked.connect(lambda: self.copy_to_clipboard(
-                subject_input.text(), body_text.toPlainText()
-            ))
-            button_layout.addWidget(copy_btn)
-            
-            cancel_btn = QPushButton("Cancel")
-            cancel_btn.clicked.connect(dialog.reject)
-            button_layout.addWidget(cancel_btn)
-            
-            layout.addLayout(button_layout)
-            dialog.setLayout(layout)
-            dialog.exec_()
+            # Use the main draft_status_request_by_pv method for consistency
+            if self.parent_window:
+                self.parent_window.draft_status_request_by_pv(pv)
             
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to draft status request: {str(e)}")
@@ -3814,46 +3901,76 @@ Case Aging:
                 QMessageBox.warning(self, "Service Unavailable", "Gmail service not available.")
                 return
             
-            message_results = self.gmail_service.search_messages(query)
+            # Get organized threads using the new method
+            organized_threads = self.gmail_service.get_organized_threads(query, max_threads=10)
             
-            if not message_results:
-                QApplication.restoreOverrideCursor()
+            QApplication.restoreOverrideCursor()
+            
+            # Handle no threads found
+            if not organized_threads:
                 QMessageBox.information(self, "No Emails", 
                                        "No email threads found. Use 'Draft Status Request' to send initial email.")
                 return
             
-            # Get thread ID
-            thread_id = message_results[0].get('thread_id') if message_results else None
+            # Show thread selector dialog
+            thread_selector = ThreadSelectorDialog(organized_threads, case, parent=self)
+            if thread_selector.exec_() != QDialog.Accepted:
+                return  # User cancelled
             
-            # Generate follow-up
-            thread_messages = []
-            for msg in message_results[:3]:  # Get first 3 for context
-                if "id" in msg:
-                    thread = self.gmail_service.get_thread(msg["id"])
-                    if thread:
-                        thread_messages.append(thread)
+            # Determine if we're starting a new thread or replying
+            if thread_selector.start_new_thread:
+                # Start new thread - similar to status request
+                thread_id = None
+                thread_messages = []
+                # Convert name to title case
+                name_title_case = ' '.join(word.capitalize() for word in str(case['Name']).split())
+                subject = f"Follow-up: {name_title_case} DOI {case['DOI']} // Prohealth Advanced Imaging"
+            else:
+                # Use selected thread
+                selected_thread = thread_selector.selected_thread
+                if not selected_thread:
+                    return
+                
+                thread_id = selected_thread['thread_id']
+                subject = selected_thread.get('subject', '')
+                
+                # Get full thread messages for context
+                thread_messages = selected_thread.get('messages', [])
             
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            
+            # Generate follow-up email with context
             cadence_guidance = self.email_cache_service.get_cadence_guidance() if self.email_cache_service else None
             email_body = self.ai_service.generate_followup_email(case, thread_messages, cadence_guidance)
             
             QApplication.restoreOverrideCursor()
             
             # Show draft dialog
-            dialog = EmailDraftDialog(case, email_body, thread_id=thread_id, parent=self)
+            dialog = EmailDraftDialog(case, email_body, subject=subject if not thread_id else "", thread_id=thread_id, parent=self)
             if dialog.exec_() == QDialog.Accepted:
                 email_data = dialog.get_email_data()
                 
                 if email_data['approved']:
                     # Send email
-                    msg_id = self.gmail_service.send_email(
-                        email_data['recipient'],
-                        None,
-                        email_data['body'],
-                        thread_id=email_data['thread_id']
-                    )
+                    if thread_id:
+                        # Reply to thread
+                        msg_id = self.gmail_service.send_email(
+                            email_data['recipient'],
+                            None,  # No subject for replies
+                            email_data['body'],
+                            thread_id=email_data['thread_id']
+                        )
+                    else:
+                        # New thread
+                        msg_id = self.gmail_service.send_email(
+                            email_data['recipient'],
+                            email_data['subject'],
+                            email_data['body']
+                        )
                     
                     QMessageBox.information(self, "Success", f"Email sent! ID: {msg_id}")
-                    log_sent_email(case['PV'], email_data['recipient'], "Follow-up reply", msg_id)
+                    log_sent_email(case['PV'], email_data['recipient'], 
+                                 email_data.get('subject', 'Follow-up reply'), msg_id)
                     
                     # Invalidate cache
                     self.collections_tracker.invalidate_stale_case_cache()
