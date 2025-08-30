@@ -109,7 +109,7 @@ class TemplateSummaryService:
             # IMPORTANT: Search by patient NAME first (not PV)
             # Users rarely include PV in emails
             if case_data and case_data.get('Name'):
-                patient_name = case_data['Name']
+                patient_name = case_data.get('Name', '')
                 doi = case_data.get('DOI') if case_data else None
                 
                 # Use the improved patient name search with DOI filtering
@@ -316,7 +316,7 @@ class TemplateSummaryService:
         }
         
         # Calculate days since contacts (handle timezone issues)
-        if analysis['last_contact_date']:
+        if analysis.get('last_contact_date'):
             last_contact = self._parse_date(analysis['last_contact_date'])
             if last_contact:
                 # Ensure both datetimes are timezone-naive for comparison
@@ -331,7 +331,7 @@ class TemplateSummaryService:
                     # If still having issues, log and continue
                     logger.warning(f"Could not calculate days since last contact")
         
-        if analysis['last_response_date']:
+        if analysis.get('last_response_date'):
             last_response = self._parse_date(analysis['last_response_date'])
             if last_response:
                 # Ensure both datetimes are timezone-naive for comparison
@@ -347,21 +347,22 @@ class TemplateSummaryService:
                     logger.warning(f"Could not calculate days since last response")
         
         # Determine status based on patterns
-        if analysis['no_response_count'] >= 3:
+        no_response_count = analysis.get('no_response_count', 0)
+        if no_response_count >= 3:
             status['current_status'] = 'No Response - Multiple Attempts'
             status['confidence'] = 90
             status['requires_action'] = True
             status['details'].append('No response after 3+ attempts')
-        elif analysis['no_response_count'] >= 1:
+        elif no_response_count >= 1:
             status['current_status'] = 'Awaiting Response'
             status['confidence'] = 80
             status['requires_action'] = True
-            status['details'].append(f"{analysis['no_response_count']} unanswered email(s)")
-        elif analysis['settlement_mentioned']:
+            status['details'].append(f"{no_response_count} unanswered email(s)")
+        elif analysis.get('settlement_mentioned', False):
             status['current_status'] = 'Settlement Discussion'
             status['confidence'] = 85
             status['details'].append('Settlement has been discussed')
-        elif analysis['emails_received'] > 0:
+        elif analysis.get('emails_received', 0) > 0:
             if status['days_since_last_response'] and status['days_since_last_response'] < 30:
                 status['current_status'] = 'Active - Recent Response'
                 status['confidence'] = 90
@@ -378,7 +379,7 @@ class TemplateSummaryService:
             status['details'].append('No response received yet')
         
         # Check for urgent matters
-        if analysis['urgent_mentioned']:
+        if analysis.get('urgent_mentioned', False):
             status['requires_action'] = True
             status['details'].append('[!] Urgent matter noted')
         
@@ -389,36 +390,39 @@ class TemplateSummaryService:
         recommendations = []
         
         # Based on response patterns
-        if analysis['no_response_count'] >= 3:
+        no_response_count = analysis.get('no_response_count', 0)
+        if no_response_count >= 3:
             recommendations.append("Consider phone follow-up - multiple emails unanswered")
             recommendations.append("Verify attorney email address is correct")
-        elif analysis['no_response_count'] >= 1:
+        elif no_response_count >= 1:
             recommendations.append("Send follow-up email or attempt phone contact")
         
         # Based on time gaps
-        if status['days_since_last_response'] and status['days_since_last_response'] > 60:
+        days_since_response = status.get('days_since_last_response')
+        if days_since_response and days_since_response > 60:
             recommendations.append("High priority - No response in 60+ days")
-        elif status['days_since_last_response'] and status['days_since_last_response'] > 30:
+        elif days_since_response and days_since_response > 30:
             recommendations.append("Follow up - No response in 30+ days")
         
         # Based on case status
-        if analysis['settlement_mentioned']:
+        if analysis.get('settlement_mentioned', False):
             recommendations.append("Monitor settlement progress closely")
             recommendations.append("Prepare final billing documentation")
         
-        if analysis['reduction_mentioned']:
+        if analysis.get('reduction_mentioned', False):
             recommendations.append("Review reduction request and prepare response")
         
-        if analysis['urgent_mentioned']:
+        if analysis.get('urgent_mentioned', False):
             recommendations.append("[!] Address urgent matter immediately")
         
         # Check for statute of limitations (2 years)
-        if status['days_since_last_contact'] and status['days_since_last_contact'] > 700:
+        days_since_contact = status.get('days_since_last_contact')
+        if days_since_contact and days_since_contact > 700:
             recommendations.append("Consider CCP 335.1 inquiry - approaching 2-year statute")
         
         # If no specific recommendations, provide general guidance
         if not recommendations:
-            if status['requires_action']:
+            if status.get('requires_action', False):
                 recommendations.append("Follow up on case status")
             else:
                 recommendations.append("Continue monitoring case progress")
@@ -458,43 +462,44 @@ class TemplateSummaryService:
         # Status Section
         lines.append("CURRENT STATUS")
         lines.append("-" * 40)
-        lines.append(f"Status: {status['current_status']}")
-        lines.append(f"Confidence: {status['confidence']}%")
-        if status['days_since_last_contact']:
+        lines.append(f"Status: {status.get('current_status', 'Unknown')}")
+        lines.append(f"Confidence: {status.get('confidence', 0)}%")
+        if status.get('days_since_last_contact'):
             lines.append(f"Days Since Last Contact: {status['days_since_last_contact']}")
-        if status['days_since_last_response']:
+        if status.get('days_since_last_response'):
             lines.append(f"Days Since Attorney Response: {status['days_since_last_response']}")
-        if status['details']:
+        if status.get('details'):
             lines.append("Details:")
-            for detail in status['details']:
+            for detail in status.get('details', []):
                 lines.append(f"  • {detail}")
         lines.append("")
         
         # Communication Summary
         lines.append("COMMUNICATION SUMMARY")
         lines.append("-" * 40)
-        lines.append(f"Total Emails: {analysis['total_emails']}")
-        lines.append(f"Emails Sent by Us: {analysis['emails_sent']}")
-        lines.append(f"Attorney Responses: {analysis['emails_received']}")
-        lines.append(f"Response Rate: {analysis['response_rate']:.1f}%")
-        lines.append(f"Unanswered Emails: {analysis['no_response_count']}")
+        lines.append(f"Total Emails: {analysis.get('total_emails', 0)}")
+        lines.append(f"Emails Sent by Us: {analysis.get('emails_sent', 0)}")
+        lines.append(f"Attorney Responses: {analysis.get('emails_received', 0)}")
+        lines.append(f"Response Rate: {analysis.get('response_rate', 0):.1f}%")
+        lines.append(f"Unanswered Emails: {analysis.get('no_response_count', 0)}")
         
-        if analysis['first_contact_date']:
+        if analysis.get('first_contact_date'):
             first_date = self._format_date(analysis['first_contact_date'])
             lines.append(f"First Contact: {first_date}")
-        if analysis['last_contact_date']:
+        if analysis.get('last_contact_date'):
             last_date = self._format_date(analysis['last_contact_date'])
             lines.append(f"Most Recent Contact: {last_date}")
-        if analysis['last_response_date']:
+        if analysis.get('last_response_date'):
             response_date = self._format_date(analysis['last_response_date'])
             lines.append(f"Last Attorney Response: {response_date}")
         lines.append("")
         
         # Key Events
-        if analysis['key_events']:
+        key_events = analysis.get('key_events')
+        if key_events and isinstance(key_events, list):
             lines.append("KEY EVENTS")
             lines.append("-" * 40)
-            for event in analysis['key_events'][:5]:  # Show top 5 events
+            for event in key_events[:5]:  # Show top 5 events
                 if event and isinstance(event, dict):
                     event_date = self._format_date(event.get('date', ''))
                     detail = event.get('detail', 'Unknown event')
@@ -502,10 +507,11 @@ class TemplateSummaryService:
             lines.append("")
         
         # Communication Gaps
-        if analysis['communication_gaps']:
+        comm_gaps = analysis.get('communication_gaps')
+        if comm_gaps and isinstance(comm_gaps, list):
             lines.append("COMMUNICATION GAPS")
             lines.append("-" * 40)
-            for gap in analysis['communication_gaps'][:3]:  # Show top 3 gaps
+            for gap in comm_gaps[:3]:  # Show top 3 gaps
                 if gap and isinstance(gap, dict):
                     days = gap.get('days', 0)
                     start = gap.get('start', 'Unknown')
@@ -519,7 +525,7 @@ class TemplateSummaryService:
             lines.append("-" * 40)
             conversation = self._extract_email_conversation_summary(emails)
             # Show up to 10 most recent conversations
-            if conversation:
+            if conversation and isinstance(conversation, list):
                 for conv in conversation[-10:]:
                     if conv and isinstance(conv, dict):
                         date = conv.get('date', 'Unknown')
@@ -531,7 +537,7 @@ class TemplateSummaryService:
             lines.append("")
         
         # Recent Email Activity (subjects only - last 5)
-        if emails:
+        if emails and isinstance(emails, list):
             lines.append("RECENT ACTIVITY")
             lines.append("-" * 40)
             for email in emails[:5]:
@@ -539,7 +545,11 @@ class TemplateSummaryService:
                 from_addr = email.get('from') or ''
                 is_from_us = 'prohealth' in from_addr.lower() or 'transcon' in from_addr.lower()
                 direction = ">> SENT" if is_from_us else "<< RECEIVED"
-                subject = email.get('subject', 'No Subject')[:50]
+                subject = email.get('subject', 'No Subject')
+                if subject:
+                    subject = subject[:50]
+                else:
+                    subject = 'No Subject'
                 lines.append(f"{date} {direction}: {subject}")
             lines.append("")
         
@@ -724,7 +734,7 @@ class TemplateSummaryService:
                                 # Return first 100 chars of meaningful content
                                 cleaned = sentence.strip()
                                 if cleaned:
-                                    return cleaned[:100]
+                                    return cleaned[:100] if cleaned else "Email content"
                 
                 # Default for their emails
                 return "Responded to inquiry"
