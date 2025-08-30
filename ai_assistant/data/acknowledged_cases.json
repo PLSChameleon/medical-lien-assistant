@@ -178,5 +178,14 @@
     "notes": "2024 doi not assigned to transcon ",
     "snooze_days": 0,
     "review_after": null
+  },
+  "289618": {
+    "acknowledged_date": "2025-08-29T21:50:57.630398",
+    "acknowledged_by": "user",
+    "reason": "LITIGATION - Awaiting outcome",
+    "status": "Litigation",
+    "notes": "lien is signed and case in lit // delaying contact ",
+    "snooze_days": 90,
+    "review_after": "2025-11-27T21:50:57.630409"
   }
 }

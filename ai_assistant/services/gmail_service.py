@@ -236,9 +236,14 @@ class GmailService:
                     ).execute()
                     
                     headers = {h["name"]: h["value"] for h in message["payload"]["headers"]}
+                    
+                    # Extract full body (not just snippet)
+                    full_body = self.extract_message_body(message)
+                    
                     all_messages.append({
                         "id": msg["id"],
                         "snippet": message.get("snippet", ""),
+                        "body": full_body,  # Add full body
                         "from": headers.get("From"),
                         "to": headers.get("To"),
                         "subject": headers.get("Subject"),

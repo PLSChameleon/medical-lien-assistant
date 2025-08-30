@@ -440,7 +440,7 @@ class TemplateSummaryService:
         balance = case_data.get('Balance', 0) if case_data else 0
         attorney = case_data.get('Attorney Email', 'Unknown') if case_data else 'Unknown'
         law_firm = case_data.get('Law Firm', 'Unknown') if case_data else 'Unknown'
-        cms_number = case_data.get('CMS #', 'Unknown') if case_data else 'Unknown'
+        cms_number = case_data.get('CMS', 'Unknown') if case_data else 'Unknown'
         
         # Format dates
         if isinstance(doi, datetime):
@@ -594,7 +594,36 @@ class TemplateSummaryService:
                 from_addr = email.get('from') or 'Unknown'
                 to_addr = email.get('to') or 'Unknown'
                 subject = email.get('subject') or 'No Subject'
+                # Use full body if available, otherwise fall back to snippet
                 body = email.get('body') or email.get('snippet') or ''
+                
+                # Remove email signatures (common patterns)
+                if body:
+                    # Common signature indicators
+                    signature_indicators = [
+                        '\n--\n',  # Standard email signature delimiter
+                        '\nSent from',
+                        '\nGet Outlook',
+                        '\nThis email was sent',
+                        '\nDean Halvorsen\nTranscon',  # Specific to your signature
+                        '\nKaren Huizar\nTranscon',  # Another known signature
+                        '\nSincerely,',
+                        '\nBest regards,',
+                        '\nRegards,',
+                        '\nThank you,',
+                        '\nThanks,',
+                    ]
+                    
+                    # Find the earliest signature indicator
+                    earliest_pos = len(body)
+                    for indicator in signature_indicators:
+                        pos = body.find(indicator)
+                        if pos != -1 and pos < earliest_pos:
+                            earliest_pos = pos
+                    
+                    # Truncate at signature if found
+                    if earliest_pos < len(body):
+                        body = body[:earliest_pos].strip()
                 
                 # Determine direction
                 is_from_us = any(domain in from_addr.lower() for domain in ['prohealth', 'transcon', 'dean'])

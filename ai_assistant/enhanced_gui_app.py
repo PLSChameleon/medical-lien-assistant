@@ -853,9 +853,25 @@ class ThreadSelectorDialog(QDialog):
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
         
-        # Thread list widget
+        # Thread list widget with improved selection visibility
         self.thread_list = QListWidget()
         self.thread_list.setSelectionMode(QListWidget.SingleSelection)
+        
+        # Apply custom stylesheet for better selection visibility
+        self.thread_list.setStyleSheet("""
+            QListWidget {
+                background-color: white;
+                border: 1px solid #ccc;
+                border-radius: 5px;
+            }
+            QListWidget::item:selected {
+                background-color: #2196F3;
+                border: 2px solid #1976D2;
+            }
+            QListWidget::item:hover:!selected {
+                background-color: #E3F2FD;
+            }
+        """)
         
         # Add threads to list
         for thread in self.threads:
@@ -976,18 +992,16 @@ class ThreadSelectorDialog(QDialog):
         
         widget.setLayout(layout)
         
-        # Style the widget
+        # Style the widget - make background transparent so selection shows through
         widget.setStyleSheet("""
             QWidget {
-                background-color: #f5f5f5;
-                border: 1px solid #ddd;
-                border-radius: 5px;
-            }
-            QWidget:hover {
-                background-color: #e8e8e8;
-                border: 1px solid #bbb;
+                background-color: transparent;
+                padding: 5px;
             }
         """)
+        
+        # Set widget to allow selection highlighting to show through
+        widget.setAttribute(Qt.WA_TranslucentBackground)
         
         return widget
     
