@@ -683,12 +683,18 @@ Thank you for your attention to this matter"""
         dialog = CaseAcknowledgmentDialog(pv, case_name, status, self)
         if dialog.exec_():
             data = dialog.get_acknowledgment_data()
+            
+            # Get the full case data to retrieve CMS number
+            case = self.case_manager.get_case_by_pv(pv)
+            cms_number = case.get('CMS') if case else None
+            
             success = self.ack_service.acknowledge_case(
                 pv=pv,
                 reason=data['reason'],
                 snooze_days=data['snooze_days'],
                 status=status,
-                notes=data['notes']
+                notes=data['notes'],
+                cms_number=cms_number
             )
             
             if success:
@@ -1848,12 +1854,18 @@ class BulkEmailWidget(QWidget):
         dialog = CaseAcknowledgmentDialog(pv, case_name, status, self)
         if dialog.exec_():
             data = dialog.get_acknowledgment_data()
+            
+            # Get the full case data to retrieve CMS number
+            case = self.parent_window.case_manager.get_case_by_pv(pv) if self.parent_window else None
+            cms_number = case.get('CMS') if case else None
+            
             success = self.ack_service.acknowledge_case(
                 pv=pv,
                 reason=data['reason'],
                 snooze_days=data['snooze_days'],
                 status=status,
-                notes=data['notes']
+                notes=data['notes'],
+                cms_number=cms_number
             )
             
             if success:

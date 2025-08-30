@@ -12,6 +12,14 @@ from config import Config
 
 logger = logging.getLogger(__name__)
 
+# Import CMS logging function for acknowledgments
+try:
+    from services.cms_integration import log_acknowledgment_note
+    CMS_AVAILABLE = True
+except ImportError:
+    CMS_AVAILABLE = False
+    logger.warning("CMS integration not available for acknowledgment notes")
+
 class CaseAcknowledgmentService:
     """Service to manage acknowledged/snoozed cases"""
     
@@ -43,7 +51,7 @@ class CaseAcknowledgmentService:
             logger.error(f"Error saving acknowledgments: {e}")
     
     def acknowledge_case(self, pv: str, reason: str = "", snooze_days: int = 30, 
-                        status: str = "", notes: str = "") -> bool:
+                        status: str = "", notes: str = "", cms_number: str = None) -> bool:
         """
         Acknowledge a case to temporarily remove it from active workflows
         
@@ -53,6 +61,7 @@ class CaseAcknowledgmentService:
             snooze_days: Number of days to snooze (0 = indefinite)
             status: Current case status from xlsx
             notes: Additional notes
+            cms_number: CMS/PID number for the case (optional)
         
         Returns:
             bool: Success status
@@ -73,6 +82,21 @@ class CaseAcknowledgmentService:
             self._save_acknowledgments()
             
             logger.info(f"Case {pv} acknowledged: {reason}")
+            
+            # Log CMS note for acknowledgment if CMS number is available
+            if CMS_AVAILABLE and cms_number and notes:
+                try:
+                    # Create note text combining reason and notes
+                    note_text = f"ACKNOWLEDGED: {reason}" if reason else "ACKNOWLEDGED"
+                    if notes:
+                        note_text += f" - {notes}"
+                    
+                    log_acknowledgment_note(cms_number, note_text)
+                    logger.info(f"CMS acknowledgment note logged for PID {cms_number}")
+                except Exception as cms_error:
+                    logger.error(f"Failed to log CMS acknowledgment note: {cms_error}")
+                    # Don't fail the acknowledgment if CMS logging fails
+            
             return True
             
         except Exception as e:

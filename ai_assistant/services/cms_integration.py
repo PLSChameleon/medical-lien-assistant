@@ -42,6 +42,30 @@ def log_session_email(pid, recipient_email, email_type="FOLLOW-UP"):
         import traceback
         traceback.print_exc()
 
+def log_acknowledgment_note(pid, note_text):
+    """Log acknowledgment note - goes to PENDING queue until CMS note is added"""
+    try:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Store acknowledgment notes with special type and the note text as the recipient field
+        log_entry = f"[{timestamp}] PID: {pid} | Email Type: ACKNOWLEDGMENT | Sent to: {note_text}\n"
+        
+        # Add to pending queue (these need CMS notes)
+        with open(SESSION_EMAILS_PENDING_LOG, "a", encoding="utf-8") as f:
+            f.write(log_entry)
+            f.flush()  # Force write to disk
+        
+        logger.info(f"✅ Acknowledgment note logged to pending queue: PID {pid}")
+        
+        # Verify it was written
+        if os.path.exists(SESSION_EMAILS_PENDING_LOG):
+            size = os.path.getsize(SESSION_EMAILS_PENDING_LOG)
+            logger.info(f"[DEBUG] Pending log file size after write: {size} bytes")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to log acknowledgment note: {e}")
+        import traceback
+        traceback.print_exc()
+
 def log_cms_note_added(pid, recipient_email, email_type="FOLLOW-UP"):
     """Log CMS note added and move email from pending to processed"""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -162,8 +186,8 @@ class CMSIntegrationService:
         self.password = os.getenv("CMS_PASSWORD", "Dean3825")
         self.login_url = "https://cms.transconfinancialinc.com/CMS"
         
-        # Note configuration
-        self.note_type_value = "COR"
+        # Note configuration - default to COR for emails, but can be overridden
+        self.default_note_type = "COR"  # Correspondence for emails
         self.next_contact_date = (datetime.today() + timedelta(days=30)).strftime("%m/%d/%Y")
         
         # Session management
@@ -707,10 +731,19 @@ class CMSIntegrationService:
             self.page = None
             self.logged_in = False
     
-    async def add_note(self, cms_number, note_text):
-        """Add a note to a specific case in CMS"""
+    async def add_note(self, cms_number, note_text, note_type=None):
+        """Add a note to a specific case in CMS
+        
+        Args:
+            cms_number: The CMS/PID number for the case
+            note_text: The text of the note to add
+            note_type: The note type code (e.g., "COR", "NA"). If None, uses default
+        """
         if not self.logged_in:
             raise Exception("CMS session not started. Call start_session() first.")
+        
+        # Use provided note type or default
+        note_type_value = note_type if note_type else self.default_note_type
         
         try:
             logger.info(f"Adding note to CMS case {cms_number}")
@@ -780,7 +813,7 @@ class CMSIntegrationService:
             await asyncio.sleep(1)
             
             # Fill the note form
-            await self.page.select_option("#NoteType", self.note_type_value)
+            await self.page.select_option("#NoteType", note_type_value)
             await self.page.fill("#AddNote", note_text)
             await self.page.fill("#NextCntDate", self.next_contact_date)
             
@@ -799,17 +832,22 @@ class CMSIntegrationService:
     async def add_follow_up_note(self, cms_number, recipient_email):
         """Add a follow-up email note"""
         note_text = f"FOLLOW UP EMAIL SENT TO {recipient_email.upper()}"
-        return await self.add_note(cms_number, note_text)
+        return await self.add_note(cms_number, note_text, note_type="COR")
     
     async def add_status_request_note(self, cms_number, recipient_email):
         """Add a status request email note"""
         note_text = f"STATUS REQUEST SENT TO {recipient_email.upper()}"
-        return await self.add_note(cms_number, note_text)
+        return await self.add_note(cms_number, note_text, note_type="COR")
     
     async def add_general_email_note(self, cms_number, recipient_email, email_type="EMAIL"):
         """Add a general email note"""
         note_text = f"{email_type.upper()} SENT TO {recipient_email.upper()}"
-        return await self.add_note(cms_number, note_text)
+        return await self.add_note(cms_number, note_text, note_type="COR")
+    
+    async def add_acknowledgment_note(self, cms_number, note_text):
+        """Add an acknowledgment note with 'None' note type"""
+        # Use "NA" for None note type as per dropdown options
+        return await self.add_note(cms_number, note_text, note_type="NA")
     
     async def add_test_email_note(self, cms_number, recipient_info, email_type="test_bulk_status_request"):
         """Add a test email note with clear TEST MODE indication"""
@@ -898,6 +936,9 @@ async def process_session_cms_notes():
                     success = await cms_service.add_follow_up_note(pid, email)
                 elif email_type.lower() == "status_request":
                     success = await cms_service.add_status_request_note(pid, email)
+                elif email_type.lower() == "acknowledgment":
+                    # For acknowledgments, the 'email' field contains the note text
+                    success = await cms_service.add_acknowledgment_note(pid, email)
                 elif "test_" in email_type.lower():
                     # Handle test emails specially
                     success = await cms_service.add_test_email_note(pid, email, email_type)
