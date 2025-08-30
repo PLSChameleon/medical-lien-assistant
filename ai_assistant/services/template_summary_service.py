@@ -286,11 +286,13 @@ class TemplateSummaryService:
     def _get_email_context(self, text: str, email: str) -> str:
         """Get context around an email address"""
         try:
+            if not text:
+                return ""
             index = text.lower().index(email.lower())
             start = max(0, index - 100)
             end = min(len(text), index + 100)
             return text[start:end]
-        except ValueError:
+        except (ValueError, AttributeError):
             return ""
     
     def _is_relevant_email(self, context: str) -> bool:
@@ -493,8 +495,10 @@ class TemplateSummaryService:
             lines.append("KEY EVENTS")
             lines.append("-" * 40)
             for event in analysis['key_events'][:5]:  # Show top 5 events
-                event_date = self._format_date(event['date'])
-                lines.append(f"• {event_date}: {event['detail']}")
+                if event and isinstance(event, dict):
+                    event_date = self._format_date(event.get('date', ''))
+                    detail = event.get('detail', 'Unknown event')
+                    lines.append(f"• {event_date}: {detail}")
             lines.append("")
         
         # Communication Gaps
@@ -502,7 +506,11 @@ class TemplateSummaryService:
             lines.append("COMMUNICATION GAPS")
             lines.append("-" * 40)
             for gap in analysis['communication_gaps'][:3]:  # Show top 3 gaps
-                lines.append(f"• {gap['days']} days: {gap['start']} to {gap['end']}")
+                if gap and isinstance(gap, dict):
+                    days = gap.get('days', 0)
+                    start = gap.get('start', 'Unknown')
+                    end = gap.get('end', 'Unknown')
+                    lines.append(f"• {days} days: {start} to {end}")
             lines.append("")
         
         # Email Conversation Summary (what was discussed)
@@ -511,10 +519,15 @@ class TemplateSummaryService:
             lines.append("-" * 40)
             conversation = self._extract_email_conversation_summary(emails)
             # Show up to 10 most recent conversations
-            for conv in conversation[-10:]:
-                lines.append(f"({conv['date']}) {conv['direction']}: {conv['summary']}")
-            if len(conversation) > 10:
-                lines.append(f"... and {len(conversation) - 10} earlier emails")
+            if conversation:
+                for conv in conversation[-10:]:
+                    if conv and isinstance(conv, dict):
+                        date = conv.get('date', 'Unknown')
+                        direction = conv.get('direction', 'Unknown')
+                        summary = conv.get('summary', 'No summary available')
+                        lines.append(f"({date}) {direction}: {summary}")
+                if len(conversation) > 10:
+                    lines.append(f"... and {len(conversation) - 10} earlier emails")
             lines.append("")
         
         # Recent Email Activity (subjects only - last 5)
@@ -702,12 +715,16 @@ class TemplateSummaryService:
                 return "Discussed contact preferences"
             else:
                 # Try to extract first meaningful sentence
-                sentences = body.split('.')
-                for sentence in sentences:
-                    # Skip greetings and signatures
-                    if len(sentence) > 20 and not any(skip in sentence.lower() for skip in ['hello', 'dear', 'regards', 'sincerely', 'thank you']):
-                        # Return first 100 chars of meaningful content
-                        return sentence.strip()[:100]
+                if body:
+                    sentences = body.split('.')
+                    for sentence in sentences:
+                        if sentence:
+                            # Skip greetings and signatures
+                            if len(sentence) > 20 and not any(skip in sentence.lower() for skip in ['hello', 'dear', 'regards', 'sincerely', 'thank you']):
+                                # Return first 100 chars of meaningful content
+                                cleaned = sentence.strip()
+                                if cleaned:
+                                    return cleaned[:100]
                 
                 # Default for their emails
                 return "Responded to inquiry"
