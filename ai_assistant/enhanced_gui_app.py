@@ -2444,6 +2444,10 @@ class EnhancedMainWindow(QMainWindow):
                     user_email = self.gmail_service.service.users().getProfile(userId='me').execute().get('emailAddress', 'unknown')
                 except:
                     pass
+                
+                # Check for CMS credentials on first run
+                self.check_and_setup_cms_credentials()
+                
             except Exception as gmail_error:
                 self.gmail_service = None
                 QMessageBox.warning(None, "Gmail Service", 
@@ -2941,6 +2945,110 @@ class EnhancedMainWindow(QMainWindow):
         
         widget.setLayout(layout)
         return widget
+    
+    def check_and_setup_cms_credentials(self):
+        """Check if CMS credentials exist, prompt for them if not"""
+        import os
+        from dotenv import load_dotenv, set_key
+        
+        # Get the config.env path
+        config_dir = os.path.dirname(os.path.abspath(__file__))
+        env_path = os.path.join(config_dir, 'config.env')
+        
+        # Load current environment
+        load_dotenv(env_path)
+        
+        # Check if CMS credentials are already configured
+        cms_username = os.getenv("CMS_USERNAME")
+        cms_password = os.getenv("CMS_PASSWORD")
+        
+        # If not configured or still have placeholder values, prompt user
+        if (not cms_username or not cms_password or 
+            cms_username == "YOUR_CMS_USERNAME_HERE" or 
+            cms_password == "YOUR_CMS_PASSWORD_HERE"):
+            
+            # Create dialog for CMS credentials
+            dialog = QDialog(self)
+            dialog.setWindowTitle("CMS Setup Required")
+            dialog.setMinimumWidth(400)
+            
+            layout = QVBoxLayout()
+            
+            # Instructions
+            instructions = QLabel(
+                "Welcome! Please enter your CMS credentials.\n"
+                "These will be saved securely in your config.env file.\n"
+                "You can update them later by editing config.env directly."
+            )
+            instructions.setWordWrap(True)
+            layout.addWidget(instructions)
+            
+            # Username input
+            username_label = QLabel("CMS Username:")
+            layout.addWidget(username_label)
+            username_input = QLineEdit()
+            if cms_username and cms_username != "YOUR_CMS_USERNAME_HERE":
+                username_input.setText(cms_username)
+            layout.addWidget(username_input)
+            
+            # Password input
+            password_label = QLabel("CMS Password:")
+            layout.addWidget(password_label)
+            password_input = QLineEdit()
+            password_input.setEchoMode(QLineEdit.Password)
+            if cms_password and cms_password != "YOUR_CMS_PASSWORD_HERE":
+                password_input.setText(cms_password)
+            layout.addWidget(password_input)
+            
+            # Buttons
+            button_layout = QHBoxLayout()
+            save_btn = QPushButton("Save Credentials")
+            skip_btn = QPushButton("Skip (CMS features disabled)")
+            button_layout.addWidget(save_btn)
+            button_layout.addWidget(skip_btn)
+            layout.addLayout(button_layout)
+            
+            dialog.setLayout(layout)
+            
+            # Button handlers
+            def save_credentials():
+                username = username_input.text().strip()
+                password = password_input.text().strip()
+                
+                if not username or not password:
+                    QMessageBox.warning(dialog, "Missing Information", 
+                                       "Please enter both username and password.")
+                    return
+                
+                try:
+                    # Save to config.env
+                    set_key(env_path, "CMS_USERNAME", username)
+                    set_key(env_path, "CMS_PASSWORD", password)
+                    
+                    # Reload environment
+                    os.environ["CMS_USERNAME"] = username
+                    os.environ["CMS_PASSWORD"] = password
+                    
+                    QMessageBox.information(dialog, "Success", 
+                                          "CMS credentials saved successfully!")
+                    dialog.accept()
+                except Exception as e:
+                    QMessageBox.critical(dialog, "Error", 
+                                       f"Failed to save credentials: {str(e)}")
+            
+            def skip_setup():
+                reply = QMessageBox.question(dialog, "Skip CMS Setup?",
+                                           "Are you sure you want to skip CMS setup?\n"
+                                           "CMS features will be disabled until you configure credentials.",
+                                           QMessageBox.Yes | QMessageBox.No)
+                if reply == QMessageBox.Yes:
+                    dialog.reject()
+            
+            save_btn.clicked.connect(save_credentials)
+            skip_btn.clicked.connect(skip_setup)
+            
+            # Show dialog
+            dialog.exec_()
     
     def create_email_analysis_tab(self):
         """Create email analysis tab"""
