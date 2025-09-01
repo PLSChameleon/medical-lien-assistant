@@ -2880,14 +2880,8 @@ class EnhancedMainWindow(QMainWindow):
                 self.cms_count_label.setText("All processed")
                 self.cms_count_label.setStyleSheet(f"font-size: 18px; font-weight: bold; color: green;")
             
-            # Add total notes info if available
-            if total_notes > 0:
-                info_label = QLabel(f"({total_notes} total added)")
-                info_label.setStyleSheet("font-size: 12px; color: gray;")
-                layout.addWidget(self.cms_count_label)
-                layout.addWidget(info_label)
-            else:
-                layout.addWidget(self.cms_count_label)
+            # Only add the pending/processed status label
+            layout.addWidget(self.cms_count_label)
         else:
             self.cms_count_label.setText("N/A")
             self.cms_count_label.setStyleSheet(f"font-size: 18px; font-weight: bold; color: gray;")
