@@ -2652,12 +2652,16 @@ class EnhancedMainWindow(QMainWindow):
         cms_process_notes_action = QAction("📝 Process CMS &Session Notes", self)
         cms_process_notes_action.triggered.connect(self.process_cms_session_notes)
         
+        cms_credentials_action = QAction("🔑 Update CMS &Credentials", self)
+        cms_credentials_action.triggered.connect(self.update_cms_credentials)
+        
         tools_menu.addAction(refresh_cache_action)
         tools_menu.addAction(bootstrap_emails_action)
         tools_menu.addAction(bootstrap_collections_action)
         tools_menu.addSeparator()
         tools_menu.addAction(clear_cache_action)
         tools_menu.addSeparator()
+        tools_menu.addAction(cms_credentials_action)
         tools_menu.addAction(cms_init_action)
         tools_menu.addAction(cms_process_notes_action)
         
@@ -3049,6 +3053,133 @@ class EnhancedMainWindow(QMainWindow):
             
             # Show dialog
             dialog.exec_()
+    
+    def update_cms_credentials(self):
+        """Allow user to update CMS credentials at any time"""
+        import os
+        from dotenv import load_dotenv, set_key
+        
+        # Get the config.env path
+        config_dir = os.path.dirname(os.path.abspath(__file__))
+        env_path = os.path.join(config_dir, 'config.env')
+        
+        # Load current environment
+        load_dotenv(env_path)
+        
+        # Get current credentials
+        cms_username = os.getenv("CMS_USERNAME", "")
+        cms_password = os.getenv("CMS_PASSWORD", "")
+        
+        # Create dialog for CMS credentials
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Update CMS Credentials")
+        dialog.setMinimumWidth(400)
+        
+        layout = QVBoxLayout()
+        
+        # Instructions
+        instructions = QLabel(
+            "Update your CMS credentials below.\n"
+            "These will be saved in your config.env file and used for all CMS operations.\n"
+            "Leave blank to keep existing values."
+        )
+        instructions.setWordWrap(True)
+        layout.addWidget(instructions)
+        
+        # Username input
+        username_label = QLabel("CMS Username:")
+        layout.addWidget(username_label)
+        username_input = QLineEdit()
+        if cms_username and cms_username != "YOUR_CMS_USERNAME_HERE":
+            username_input.setText(cms_username)
+            username_input.setPlaceholderText(f"Current: {cms_username}")
+        else:
+            username_input.setPlaceholderText("Enter username")
+        layout.addWidget(username_input)
+        
+        # Password input  
+        password_label = QLabel("CMS Password:")
+        layout.addWidget(password_label)
+        password_input = QLineEdit()
+        password_input.setEchoMode(QLineEdit.Password)
+        if cms_password and cms_password != "YOUR_CMS_PASSWORD_HERE":
+            password_input.setPlaceholderText("Current password is set")
+        else:
+            password_input.setPlaceholderText("Enter password")
+        layout.addWidget(password_input)
+        
+        # Show password checkbox
+        show_password = QCheckBox("Show password")
+        def toggle_password():
+            if show_password.isChecked():
+                password_input.setEchoMode(QLineEdit.Normal)
+            else:
+                password_input.setEchoMode(QLineEdit.Password)
+        show_password.toggled.connect(toggle_password)
+        layout.addWidget(show_password)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        save_btn = QPushButton("Save Credentials")
+        cancel_btn = QPushButton("Cancel")
+        button_layout.addWidget(save_btn)
+        button_layout.addWidget(cancel_btn)
+        layout.addLayout(button_layout)
+        
+        dialog.setLayout(layout)
+        
+        # Button handlers
+        def save_credentials():
+            new_username = username_input.text().strip()
+            new_password = password_input.text().strip()
+            
+            # Use existing values if not changed
+            if not new_username:
+                new_username = cms_username
+            if not new_password:
+                new_password = cms_password
+                
+            if not new_username or not new_password:
+                QMessageBox.warning(dialog, "Missing Information", 
+                                   "Please enter both username and password.")
+                return
+            
+            try:
+                # Save to config.env
+                set_key(env_path, "CMS_USERNAME", new_username)
+                set_key(env_path, "CMS_PASSWORD", new_password)
+                
+                # Update environment variables immediately
+                os.environ["CMS_USERNAME"] = new_username
+                os.environ["CMS_PASSWORD"] = new_password
+                
+                # Force CMS service to reload credentials if it exists
+                if hasattr(self, 'cms_service') and self.cms_service:
+                    self.cms_service.username = new_username
+                    self.cms_service.password = new_password
+                
+                # Reset CMS session to use new credentials
+                if CMS_AVAILABLE:
+                    from services.cms_integration import CMSIntegration
+                    CMSIntegration._persistent_logged_in = False
+                
+                QMessageBox.information(dialog, "Success", 
+                                      "CMS credentials updated successfully!\n"
+                                      "New credentials will be used for all future CMS operations.")
+                dialog.accept()
+                
+                # Log the activity
+                self.log_activity("CMS credentials updated")
+                
+            except Exception as e:
+                QMessageBox.critical(dialog, "Error", 
+                                   f"Failed to save credentials: {str(e)}")
+        
+        save_btn.clicked.connect(save_credentials)
+        cancel_btn.clicked.connect(dialog.reject)
+        
+        # Show dialog
+        dialog.exec_()
     
     def create_email_analysis_tab(self):
         """Create email analysis tab"""
