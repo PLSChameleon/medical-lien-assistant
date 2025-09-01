@@ -41,6 +41,20 @@ def check_dependencies():
 def main():
     """Launch the enhanced GUI app directly."""
     try:
+        # First, ensure we're in the right directory and load config
+        import os
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        os.chdir(script_dir)
+        
+        # Load config.env explicitly before any imports
+        from dotenv import load_dotenv
+        config_path = os.path.join(script_dir, 'config.env')
+        if os.path.exists(config_path):
+            load_dotenv(config_path)
+            print(f"Loaded config from: {config_path}")
+        else:
+            print(f"WARNING: config.env not found at {config_path}")
+        
         # Check dependencies first
         missing = check_dependencies()
         if missing:

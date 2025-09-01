@@ -7,13 +7,25 @@ env_path = os.path.join(config_dir, 'config.env')
 
 # Check if config.env exists
 if not os.path.exists(env_path):
-    print(f"WARNING: config.env not found at {env_path}")
+    print(f"ERROR: config.env not found at {env_path}")
     print("Please ensure config.env file is in the ai_assistant directory")
+    print("Current working directory:", os.getcwd())
+    print("Config directory:", config_dir)
+    print("\nLooking for config files...")
+    for file in os.listdir(config_dir):
+        if file.endswith('.env'):
+            print(f"  Found: {file}")
     # Try loading from .env as fallback
-    load_dotenv(os.path.join(config_dir, '.env'))
+    fallback_path = os.path.join(config_dir, '.env')
+    if os.path.exists(fallback_path):
+        print(f"Loading fallback .env from {fallback_path}")
+        load_dotenv(fallback_path)
+    else:
+        print("No .env fallback found either")
 else:
     # Load the config.env file from the same directory as config.py
     load_dotenv(env_path)
+    print(f"Successfully loaded config.env from {env_path}")
 
 class Config:
     """Application configuration management"""
