@@ -1,7 +1,12 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# Get the directory where this config.py file is located
+config_dir = os.path.dirname(os.path.abspath(__file__))
+env_path = os.path.join(config_dir, 'config.env')
+
+# Load the .env file from the same directory as config.py
+load_dotenv(env_path)
 
 class Config:
     """Application configuration management"""
