@@ -5,8 +5,15 @@ from dotenv import load_dotenv
 config_dir = os.path.dirname(os.path.abspath(__file__))
 env_path = os.path.join(config_dir, 'config.env')
 
-# Load the .env file from the same directory as config.py
-load_dotenv(env_path)
+# Check if config.env exists
+if not os.path.exists(env_path):
+    print(f"WARNING: config.env not found at {env_path}")
+    print("Please ensure config.env file is in the ai_assistant directory")
+    # Try loading from .env as fallback
+    load_dotenv(os.path.join(config_dir, '.env'))
+else:
+    # Load the config.env file from the same directory as config.py
+    load_dotenv(env_path)
 
 class Config:
     """Application configuration management"""

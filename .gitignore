@@ -33,4 +33,4 @@ token.pkl
 
 # Session files
 session_*.log
-nul
+nul*_for_coworker.*
