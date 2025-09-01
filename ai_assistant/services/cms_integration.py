@@ -182,8 +182,8 @@ class CMSIntegrationService:
     
     def __init__(self, use_persistent_session=True):
         # CMS credentials - should be in config.env
-        self.username = os.getenv("CMS_USERNAME", "Dean")
-        self.password = os.getenv("CMS_PASSWORD", "Dean3825")
+        self.username = os.getenv("CMS_USERNAME")
+        self.password = os.getenv("CMS_PASSWORD")
         self.login_url = "https://cms.transconfinancialinc.com/CMS"
         
         # Note configuration - default to COR for emails, but can be overridden
@@ -515,8 +515,15 @@ class CMSIntegrationService:
             
             # Perform login
             logger.info("🔐 Logging into CMS...")
-            await cls._persistent_page.fill('input[name="UserName"]', os.getenv("CMS_USERNAME", "Dean"))
-            await cls._persistent_page.fill('input[name="Password"]', os.getenv("CMS_PASSWORD", "Dean3825"))
+            cms_username = os.getenv("CMS_USERNAME")
+            cms_password = os.getenv("CMS_PASSWORD")
+            
+            if not cms_username or not cms_password:
+                logger.error("CMS credentials not configured. Please set CMS_USERNAME and CMS_PASSWORD in config.env")
+                raise ValueError("CMS credentials not configured")
+            
+            await cls._persistent_page.fill('input[name="UserName"]', cms_username)
+            await cls._persistent_page.fill('input[name="Password"]', cms_password)
             await cls._persistent_page.click('button[type="submit"]')
             await cls._persistent_page.wait_for_load_state("networkidle", timeout=60000)
             
