@@ -3160,8 +3160,8 @@ class EnhancedMainWindow(QMainWindow):
                 
                 # Reset CMS session to use new credentials
                 if CMS_AVAILABLE:
-                    from services.cms_integration import CMSIntegration
-                    CMSIntegration._persistent_logged_in = False
+                    from services.cms_integration import CMSIntegrationService
+                    CMSIntegrationService._persistent_logged_in = False
                 
                 QMessageBox.information(dialog, "Success", 
                                       "CMS credentials updated successfully!\n"
