@@ -1684,8 +1684,21 @@ class BulkEmailWidget(QWidget):
                     if ack_service.is_acknowledged(pv):
                         continue
                     
+                    # Create case_data object with lowercase keys that generate_email_content expects
+                    case_data = {
+                        "pv": case_info.get("PV", ""),
+                        "name": case_info.get("Name", ""),
+                        "doi": case_info.get("DOI", ""),
+                        "cms": case_info.get("CMS", ""),
+                        "attorney_email": case_info.get("Attorney Email", ""),
+                        "law_firm": case_info.get("Law Firm", ""),
+                        "status": case_info.get("Status", ""),
+                        "balance": case_info.get("Balance", 0.0),
+                        "full_case": case_info
+                    }
+                    
                     # Generate email content
-                    email_data = self.bulk_service.generate_email_content(case_info)
+                    email_data = self.bulk_service.generate_email_content(case_data)
                     if email_data:
                         filtered_emails.append(email_data)
                     
