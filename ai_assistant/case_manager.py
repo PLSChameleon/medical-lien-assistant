@@ -189,11 +189,19 @@ class CaseManager:
                         # If parsing fails, just use the date part without time
                         doi_formatted = doi_str.split()[0] if ' ' in doi_str else doi_str
             
+            # Format name with proper capitalization
+            raw_name = row[3] if len(row) > 3 else ""
+            formatted_name = ""
+            if raw_name:
+                # Convert to title case (handles names like "JOSE GOMEZ" -> "Jose Gomez")
+                # Also handles names with apostrophes, hyphens, etc.
+                formatted_name = str(raw_name).title()
+            
             return {
                 "CMS": row[0] if len(row) > 0 else "",
                 "PV": row[1] if len(row) > 1 else "",
                 "Status": row[2] if len(row) > 2 else "",
-                "Name": row[3] if len(row) > 3 else "",
+                "Name": formatted_name,
                 "DOI": doi_formatted,
                 "DOA": doi_formatted,  # Date of Accident same as DOI for medical liens
                 "Attorney Email": row[18] if len(row) > 18 else "",
