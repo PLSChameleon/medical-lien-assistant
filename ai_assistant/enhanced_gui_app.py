@@ -1599,8 +1599,8 @@ class BulkEmailWidget(QWidget):
             
             # Show preview dialog
             dialog = QDialog(self)
-            dialog.setWindowTitle("Email Preview")
-            dialog.setMinimumSize(800, 600)
+            dialog.setWindowTitle("Email Preview - All Selected Emails")
+            dialog.setMinimumSize(900, 700)
             
             layout = QVBoxLayout()
             
@@ -1609,14 +1609,15 @@ class BulkEmailWidget(QWidget):
             preview_text.setReadOnly(True)
             
             preview_content = []
-            for i, email in enumerate(selected_emails[:5], 1):  # Show first 5
+            preview_content.append(f"Total emails to send: {len(selected_emails)}\n")
+            preview_content.append("="*60 + "\n")
+            
+            # Show ALL emails
+            for i, email in enumerate(selected_emails, 1):
                 preview_content.append(f"[{i}] {email.get('subject', 'No Subject')}")
                 preview_content.append(f"To: {email.get('to', '')}")
                 preview_content.append(f"\n{email.get('body', 'No content')}")
                 preview_content.append("\n" + "="*60 + "\n")
-            
-            if len(selected_emails) > 5:
-                preview_content.append(f"... and {len(selected_emails) - 5} more emails")
             
             preview_text.setPlainText("\n".join(preview_content))
             layout.addWidget(preview_text)
