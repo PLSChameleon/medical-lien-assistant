@@ -1164,6 +1164,7 @@ class BulkEmailWidget(QWidget):
         # Radio buttons for processing modes
         self.by_category_radio = QRadioButton("Process by Category")
         self.by_firm_radio = QRadioButton("Process by Firm")
+        self.by_status_radio = QRadioButton("Process by Status")
         self.by_priority_radio = QRadioButton("Process by Priority Score")
         self.by_balance_radio = QRadioButton("Process by Balance")
         self.custom_selection_radio = QRadioButton("Custom Selection")
@@ -1172,6 +1173,7 @@ class BulkEmailWidget(QWidget):
         
         category_layout.addWidget(self.by_category_radio)
         category_layout.addWidget(self.by_firm_radio)
+        category_layout.addWidget(self.by_status_radio)
         category_layout.addWidget(self.by_priority_radio)
         category_layout.addWidget(self.by_balance_radio)
         category_layout.addWidget(self.custom_selection_radio)
@@ -1275,6 +1277,7 @@ class BulkEmailWidget(QWidget):
         # Connect radio button changes
         self.by_category_radio.toggled.connect(self.on_mode_changed)
         self.by_firm_radio.toggled.connect(self.on_mode_changed)
+        self.by_status_radio.toggled.connect(self.on_mode_changed)
         self.by_priority_radio.toggled.connect(self.on_mode_changed)
         self.by_balance_radio.toggled.connect(self.on_mode_changed)
         self.custom_selection_radio.toggled.connect(self.on_mode_changed)
@@ -1375,6 +1378,23 @@ class BulkEmailWidget(QWidget):
                 self.bulk_service.categorize_cases()
             firms = list(self.bulk_service.categorized_cases.get("by_firm", {}).keys())[:50]
             self.selection_combo.addItems(firms)
+        elif self.by_status_radio.isChecked():
+            # Get unique statuses from case manager
+            unique_statuses = set()
+            if self.case_manager and not self.case_manager.df.empty:
+                # Status is in column 2 (index 2)
+                status_column = self.case_manager.df.iloc[:, 2]
+                unique_statuses = set(status_column.dropna().astype(str).unique())
+                # Remove empty strings and 'nan'
+                unique_statuses = {s for s in unique_statuses if s and s != 'nan'}
+            
+            # Add common statuses if found
+            status_list = sorted(list(unique_statuses))
+            if status_list:
+                self.selection_combo.addItems(status_list)
+            else:
+                # Default statuses if none found
+                self.selection_combo.addItems(["NEW", "ACTIVE", "PENDING", "CLOSED"])
         elif self.by_priority_radio.isChecked():
             self.selection_combo.addItems([
                 "Critical (90+ days no response)",
@@ -1637,6 +1657,43 @@ class BulkEmailWidget(QWidget):
             elif self.by_firm_radio.isChecked():
                 firm = self.selection_combo.currentText()
                 return self.bulk_service.prepare_batch("by_firm", subcategory=firm, limit=limit)
+                
+            elif self.by_status_radio.isChecked():
+                status = self.selection_combo.currentText()
+                if not status:
+                    return []
+                
+                # Get all cases with this status
+                filtered_emails = []
+                df = self.case_manager.df
+                
+                # Status is in column 2
+                status_matches = df[df.iloc[:, 2].astype(str).str.upper() == status.upper()]
+                
+                for _, row in status_matches.iterrows():
+                    case_info = self.case_manager.format_case(row)
+                    pv = str(case_info.get("PV", ""))
+                    
+                    # Skip if already sent
+                    if pv in self.bulk_service.sent_pids or pv in self.bulk_service.session_sent_pids:
+                        continue
+                    
+                    # Skip acknowledged cases
+                    from services.case_acknowledgment_service import CaseAcknowledgmentService
+                    ack_service = CaseAcknowledgmentService()
+                    if ack_service.is_acknowledged(pv):
+                        continue
+                    
+                    # Generate email content
+                    email_data = self.bulk_service.generate_email_content(case_info)
+                    if email_data:
+                        filtered_emails.append(email_data)
+                    
+                    # Apply limit if specified
+                    if limit and len(filtered_emails) >= limit:
+                        break
+                
+                return filtered_emails
                 
             elif self.by_priority_radio.isChecked():
                 # Map to the actual category names (same as time-based categories)
