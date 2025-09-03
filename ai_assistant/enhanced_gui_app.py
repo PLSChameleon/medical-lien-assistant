@@ -497,15 +497,20 @@ class CategoriesWidget(QWidget):
                     original_count = len(self.category_data[category])
                     self.category_data[category] = [c for c in self.category_data[category] if str(c.get('pv')) != str(pv)]
                     
-                    # If we removed something, update that category's table
+                    # If we removed something, update just that row
                     if len(self.category_data[category]) < original_count:
-                        print(f"[DEBUG] Removed PV {pv} from {category}, updating table with {len(self.category_data[category])} remaining cases")
+                        print(f"[DEBUG] Removed PV {pv} from {category}")
                         
-                        # Force immediate table refresh
-                        self.update_category_table(category, self.category_data[category])
-                        
-                        # Process events to ensure UI updates immediately
-                        QApplication.processEvents()
+                        # Find the table widget for this category
+                        widget = self.findChild(QTableWidget, f"{category}_table")
+                        if widget:
+                            # Find and remove only the specific row
+                            for row in range(widget.rowCount()):
+                                item = widget.item(row, 0)  # PV is in column 0
+                                if item and str(item.text()) == str(pv):
+                                    widget.removeRow(row)
+                                    print(f"[DEBUG] Removed row {row} from {category} table")
+                                    break
                         
                         # Update the category tab title with new count
                         for i in range(self.category_tabs.count()):
