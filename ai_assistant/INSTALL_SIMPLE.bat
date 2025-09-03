@@ -14,8 +14,9 @@ echo Press any key to start installation...
 pause >nul
 cls
 
-:: Set error handling
+:: Set error handling - make sure errors are caught
 setlocal enabledelayedexpansion
+set "ERROR_OCCURRED=0"
 
 :: Check if running as administrator
 net session >nul 2>&1
@@ -33,7 +34,15 @@ if %errorlevel% neq 0 (
     timeout /t 3 /nobreak >nul
     
     :: Relaunch as administrator
-    powershell -Command "Start-Process '%~f0' -Verb RunAs"
+    powershell -Command "Start-Process '%~f0' -Verb RunAs -Wait" >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo.
+        echo [ERROR] Failed to get administrator access
+        echo.
+        echo Please right-click INSTALL_SIMPLE.bat and select "Run as administrator"
+        echo.
+        pause
+    )
     exit
 )
 
@@ -60,13 +69,23 @@ echo Downloading Python (this may take a minute)...
 powershell -Command "& { 
     $ProgressPreference = 'SilentlyContinue'
     try {
-        Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.0/python-3.11.0-amd64.exe' -OutFile '%TEMP%\python_installer.exe'
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.0/python-3.11.0-amd64.exe' -OutFile '%TEMP%\python_installer.exe' -UseBasicParsing
         Write-Host '[OK] Download complete' -ForegroundColor Green
     } catch {
-        Write-Host '[ERROR] Download failed. Please check internet connection.' -ForegroundColor Red
+        Write-Host '[ERROR] Download failed:' $_.Exception.Message -ForegroundColor Red
+        Write-Host 'Please check your internet connection.' -ForegroundColor Red
         exit 1
     }
 }"
+
+if %errorlevel% neq 0 (
+    echo.
+    echo [ERROR] PowerShell download failed
+    echo.
+    echo Trying alternative download method...
+    certutil -urlcache -split -f "https://www.python.org/ftp/python/3.11.0/python-3.11.0-amd64.exe" "%TEMP%\python_installer.exe" >nul 2>&1
+)
 
 if not exist "%TEMP%\python_installer.exe" (
     echo [ERROR] Failed to download Python
@@ -346,3 +365,19 @@ if %errorlevel% neq 0 (
 )
 
 exit
+
+:ERROR_EXIT
+echo.
+echo =====================================
+echo  INSTALLATION FAILED
+echo =====================================
+echo.
+echo An error occurred during installation.
+echo Please try running the installer again.
+echo.
+echo If the problem persists:
+echo 1. Right-click INSTALL_SIMPLE.bat
+echo 2. Select "Run as administrator"
+echo.
+pause
+exit /b 1
