@@ -1465,8 +1465,18 @@ class BulkEmailWidget(QWidget):
                 balance_item.setData(Qt.UserRole, balance)  # Store raw value for sorting
                 self.preview_table.setItem(row, 2, balance_item)
                 
-                # Law Firm
-                self.preview_table.setItem(row, 3, QTableWidgetItem(str(email.get('law_firm', ''))))
+                # Law Firm - try multiple sources
+                law_firm = ""
+                if 'case_data' in email:
+                    law_firm = email['case_data'].get('Law Firm', '') or email['case_data'].get('law_firm', '')
+                if not law_firm:
+                    law_firm = email.get('law_firm', '')
+                if not law_firm and pv:
+                    # Try to get from case manager as last resort
+                    case = self.case_manager.get_case_by_pv(pv)
+                    if case:
+                        law_firm = case.get('Law Firm', '')
+                self.preview_table.setItem(row, 3, QTableWidgetItem(str(law_firm)))
                 
                 # Email - show TEST MODE clearly
                 email_to = str(email.get('to', ''))
@@ -1477,8 +1487,17 @@ class BulkEmailWidget(QWidget):
                     email_item.setToolTip(f"TEST MODE: Actually sending to {email_to}\nOriginal: {email.get('original_to', 'N/A')}")
                 self.preview_table.setItem(row, 4, email_item)
                 
-                # Status
-                status = email.get('case_data', {}).get('status', '') if 'case_data' in email else ''
+                # Status - try multiple sources
+                status = ""
+                if 'case_data' in email:
+                    status = email['case_data'].get('Status', '') or email['case_data'].get('status', '')
+                if not status:
+                    status = email.get('status', '')
+                if not status and pv:
+                    # Try to get from case manager as last resort
+                    case = self.case_manager.get_case_by_pv(pv)
+                    if case:
+                        status = case.get('Status', '')
                 self.preview_table.setItem(row, 5, QTableWidgetItem(str(status)))
                 
                 # Acknowledgment status
