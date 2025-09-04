@@ -130,11 +130,12 @@ class TemplateSummaryService:
                         seen_ids.add(email_id)
                         emails.append(email)
             
-            # Also search by CMS number if available
+            # Search by exact CMS number only (no variations to avoid wrong cases)
             if case_data and case_data.get('CMS'):
-                cms_number = case_data.get('CMS')
+                cms_number = str(case_data.get('CMS')).strip()
+                # Note: get_all_emails_for_case searches for exact text matches in email content
                 cms_emails = self.email_cache.get_all_emails_for_case(cms_number)
-                logger.info(f"Found {len(cms_emails)} emails for CMS# {cms_number}")
+                logger.info(f"Found {len(cms_emails)} emails for CMS# {cms_number} (exact match)")
                 for email in cms_emails:
                     email_id = email.get('id')
                     if email_id and email_id not in seen_ids:
@@ -170,29 +171,16 @@ class TemplateSummaryService:
                             seen_ids.add(email_id)
                             emails.append(email)
             
-            # As a fallback, also try searching by PV (in case it's in Reference # line)
+            # Search by exact PV number only (no variations to avoid wrong cases)
             if pv:
                 pv_emails = self.email_cache.get_case_emails(pv)
-                logger.info(f"Found {len(pv_emails)} emails for PV# {pv}")
+                logger.info(f"Found {len(pv_emails)} emails for PV# {pv} (exact match)")
                 # Add any PV-based emails not already found
                 for email in pv_emails:
                     email_id = email.get('id')
                     if email_id and email_id not in seen_ids:
                         seen_ids.add(email_id)
                         emails.append(email)
-            
-            # Also search for variations of PV number (with/without leading zeros)
-            if pv and pv.isdigit():
-                pv_int = int(pv)
-                pv_variations = [str(pv_int), str(pv_int).zfill(6)]
-                for pv_var in pv_variations:
-                    if pv_var != pv:  # Don't search the same thing twice
-                        pv_var_emails = self.email_cache.get_case_emails(pv_var)
-                        for email in pv_var_emails:
-                            email_id = email.get('id')
-                            if email_id and email_id not in seen_ids:
-                                seen_ids.add(email_id)
-                                emails.append(email)
         
         logger.info(f"Total unique emails found for case: {len(emails)}")
         
