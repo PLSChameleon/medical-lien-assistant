@@ -35,11 +35,7 @@ class BulkEmailService:
         self.firm_scores_file = "data/firm_intelligence.json"
         self.firm_scores = self.load_firm_scores()
         
-        # Email generation templates
-        self.greetings = [
-            "Hello Law Firm,", "Good day Law Firm,", "Greetings Law Firm,",
-            "Hi Law Firm,", "Dear Law Firm,"
-        ]
+        # Email generation templates - removed as we'll use time-based greetings
         
         self.status_requests = [
             "Has this case settled or is it still pending?",
@@ -440,7 +436,18 @@ class BulkEmailService:
             logger.error(f"Error categorizing cases: {e}")
             raise
     
-    def generate_email_content(self, case_data: Dict, email_type: str = "standard") -> Dict:
+    def get_time_based_greeting(self) -> str:
+        """Get appropriate greeting based on current time"""
+        current_hour = datetime.now().hour
+        
+        if current_hour < 12:
+            return "Good Morning,"
+        elif current_hour < 19:  # 7 PM
+            return "Good Afternoon,"
+        else:
+            return "Good Evening,"
+    
+    def generate_email_content(self, case_data: Dict, email_type: str = "standard", custom_body: str = None) -> Dict:
         """Generate email content for a case"""
         try:
             # Check if this is a CCP 335.1 email
@@ -522,10 +529,17 @@ Thank you for your attention to this matter"""
             pv = case_data["pv"]
             attorney_email = case_data["attorney_email"]
             
-            # Random selection for variety
-            greeting = random.choice(self.greetings)
-            status_line = random.choice(self.status_requests)
-            followup_line = random.choice(self.followups)
+            # Use time-based greeting instead of random
+            greeting = self.get_time_based_greeting()
+            
+            # Check if custom body is provided
+            if custom_body:
+                # For custom emails, use the custom body
+                body_content = custom_body
+            else:
+                # Standard email - random selection for variety
+                status_line = random.choice(self.status_requests)
+                followup_line = random.choice(self.followups)
             
             # Subject line based on DOI availability
             # ONLY mark as UNKNOWN if it's specifically a 2099 date
@@ -547,7 +561,16 @@ Thank you for your attention to this matter"""
                 subject = f"[TEST MODE - Original To: {original_to}] {subject}"
             
             # Email body - NO SIGNATURE as Gmail adds it automatically
-            body = f"""{greeting}
+            if custom_body:
+                # Custom email with greeting and reference number
+                body = f"""{greeting}
+
+{custom_body}
+
+Reference #: {pv}"""
+            else:
+                # Standard email format
+                body = f"""{greeting}
 
 In regards to Prohealth Advanced Imaging billing and liens for {name}.
 
@@ -572,7 +595,7 @@ Reference #: {pv}"""
             logger.error(f"Error generating email for case {case_data.get('pv')}: {e}")
             raise
     
-    def prepare_batch(self, category: str, subcategory: str = None, limit: int = None) -> List[Dict]:
+    def prepare_batch(self, category: str, subcategory: str = None, limit: int = None, custom_body: str = None) -> List[Dict]:
         """Prepare a batch of emails for review and approval"""
         try:
             emails = []
@@ -728,9 +751,9 @@ Reference #: {pv}"""
                 try:
                     # Check if this is CCP 335.1 category
                     if category == "ccp_335_1":
-                        email = self.generate_email_content(case, email_type="ccp_335_1")
+                        email = self.generate_email_content(case, email_type="ccp_335_1", custom_body=custom_body)
                     else:
-                        email = self.generate_email_content(case)
+                        email = self.generate_email_content(case, custom_body=custom_body)
                     emails.append(email)
                 except Exception as e:
                     logger.error(f"Error generating email for case {case.get('pv')}: {e}")
@@ -1061,7 +1084,7 @@ Reference #: {pv}"""
         
         return stats
     
-    def prepare_batch_from_numbers(self, numbers: List[str]) -> List[Dict]:
+    def prepare_batch_from_numbers(self, numbers: List[str], custom_body: str = None) -> List[Dict]:
         """Prepare batch of emails from a list of PV or CMS numbers"""
         try:
             emails = []
@@ -1117,7 +1140,7 @@ Reference #: {pv}"""
                     
                     # Generate email content
                     try:
-                        email = self.generate_email_content(case_data)
+                        email = self.generate_email_content(case_data, custom_body=custom_body)
                         emails.append(email)
                     except Exception as e:
                         logger.error(f"Error generating email for {num}: {e}")

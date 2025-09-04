@@ -1125,6 +1125,170 @@ class EmailDraftDialog(QDialog):
         }
 
 
+class CustomEmailDialog(QDialog):
+    """Dialog for composing custom batch emails"""
+    
+    def __init__(self, num_cases, parent=None):
+        super().__init__(parent)
+        self.num_cases = num_cases
+        self.init_ui()
+    
+    def init_ui(self):
+        self.setWindowTitle("Compose Custom Batch Email")
+        self.setModal(True)
+        self.resize(600, 500)
+        
+        layout = QVBoxLayout()
+        
+        # Header info
+        header_label = QLabel(f"<h3>Compose Custom Email for {self.num_cases} Selected Cases</h3>")
+        layout.addWidget(header_label)
+        
+        # Instructions
+        instructions = QLabel(
+            "This email will be sent to all selected cases. The greeting will be automatically "
+            "added based on the current time (Good Morning/Afternoon/Evening), and the case "
+            "reference number will be appended at the end."
+        )
+        instructions.setWordWrap(True)
+        instructions.setStyleSheet("color: #888; margin-bottom: 10px;")
+        layout.addWidget(instructions)
+        
+        # Preview of what will be added
+        preview_frame = QFrame()
+        preview_frame.setFrameStyle(QFrame.Box)
+        preview_frame.setStyleSheet("background-color: #f0f0f0; padding: 10px;")
+        preview_layout = QVBoxLayout()
+        
+        current_greeting = self.get_current_greeting()
+        preview_text = QLabel(
+            f"<b>Auto-added content:</b><br>"
+            f"• Greeting: {current_greeting}<br>"
+            f"• Patient name and DOI in subject<br>"
+            f"• Reference number at bottom"
+        )
+        preview_layout.addWidget(preview_text)
+        preview_frame.setLayout(preview_layout)
+        layout.addWidget(preview_frame)
+        
+        # Email body input
+        body_label = QLabel("Email Body:")
+        layout.addWidget(body_label)
+        
+        self.body_edit = QTextEdit()
+        self.body_edit.setPlaceholderText(
+            "Enter your custom email message here...\n\n"
+            "Example:\n"
+            "In regards to Prohealth Advanced Imaging billing and liens for the above-referenced patient.\n\n"
+            "We are conducting our year-end review and need to update our records. "
+            "Could you please provide the current status of this case?\n\n"
+            "If the case has settled, please provide settlement details. "
+            "If it's still pending, please let us know the expected timeline.\n\n"
+            "Thank you for your time"
+        )
+        layout.addWidget(self.body_edit)
+        
+        # Template suggestions
+        template_frame = QFrame()
+        template_layout = QHBoxLayout()
+        template_layout.addWidget(QLabel("Quick Templates:"))
+        
+        template_btn1 = QPushButton("Year-End Review")
+        template_btn1.clicked.connect(lambda: self.apply_template("year_end"))
+        template_layout.addWidget(template_btn1)
+        
+        template_btn2 = QPushButton("Settlement Inquiry")
+        template_btn2.clicked.connect(lambda: self.apply_template("settlement"))
+        template_layout.addWidget(template_btn2)
+        
+        template_btn3 = QPushButton("Documentation Request")
+        template_btn3.clicked.connect(lambda: self.apply_template("documentation"))
+        template_layout.addWidget(template_btn3)
+        
+        template_frame.setLayout(template_layout)
+        layout.addWidget(template_frame)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        
+        self.send_btn = QPushButton("Send Custom Email")
+        self.send_btn.clicked.connect(self.accept)
+        
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        
+        button_layout.addWidget(cancel_btn)
+        button_layout.addStretch()
+        button_layout.addWidget(self.send_btn)
+        
+        layout.addLayout(button_layout)
+        self.setLayout(layout)
+    
+    def get_current_greeting(self):
+        """Get the current time-based greeting"""
+        from datetime import datetime
+        current_hour = datetime.now().hour
+        
+        if current_hour < 12:
+            return "Good Morning,"
+        elif current_hour < 19:
+            return "Good Afternoon,"
+        else:
+            return "Good Evening,"
+    
+    def apply_template(self, template_type):
+        """Apply a template to the email body"""
+        templates = {
+            "year_end": """In regards to Prohealth Advanced Imaging billing and liens for the above-referenced patient.
+
+We are conducting our year-end review and need to update our records for all pending cases. Could you please provide the current status of this case?
+
+If the case has settled, please provide:
+- Settlement date
+- Any outstanding balance information
+
+If the case is still pending, please let us know:
+- Current stage of litigation/negotiation
+- Expected timeline for resolution
+
+Thank you for your assistance with our year-end reconciliation""",
+            
+            "settlement": """In regards to Prohealth Advanced Imaging billing and liens for the above-referenced patient.
+
+We wanted to check if there has been any progress on settlement negotiations for this case.
+
+Please let us know:
+1. Has the case settled?
+2. If yes, what are the next steps for lien resolution?
+3. If no, is there an anticipated settlement timeline?
+
+We're available to provide any documentation or reports you may need to facilitate the settlement process.
+
+Thank you for your time""",
+            
+            "documentation": """In regards to Prohealth Advanced Imaging billing and liens for the above-referenced patient.
+
+We are following up to ensure you have all necessary documentation for this case.
+
+Please let us know if you need:
+- Updated billing statements
+- Medical records or imaging reports
+- Lien documentation
+- Any other supporting materials
+
+Additionally, could you provide a brief status update on this case?
+
+Thank you for your attention to this matter"""
+        }
+        
+        if template_type in templates:
+            self.body_edit.setPlainText(templates[template_type])
+    
+    def get_custom_body(self):
+        """Get the custom email body"""
+        return self.body_edit.toPlainText()
+
+
 class BulkEmailWidget(QWidget):
     """Widget for bulk email processing"""
     
@@ -1251,6 +1415,11 @@ class BulkEmailWidget(QWidget):
         self.send_btn.clicked.connect(self.send_batch)
         self.send_btn.setEnabled(False)
         
+        self.custom_email_btn = QPushButton("✍️ Custom Batch Email")
+        self.custom_email_btn.clicked.connect(self.send_custom_batch)
+        self.custom_email_btn.setEnabled(False)
+        self.custom_email_btn.setToolTip("Write a custom email to send to all selected cases")
+        
         self.export_btn = QPushButton("💾 Export to Excel")
         self.export_btn.clicked.connect(self.export_batch)
         
@@ -1258,6 +1427,7 @@ class BulkEmailWidget(QWidget):
         button_layout.addWidget(self.populate_btn)
         button_layout.addWidget(self.preview_btn)
         button_layout.addWidget(self.send_btn)
+        button_layout.addWidget(self.custom_email_btn)
         button_layout.addWidget(self.export_btn)
         
         layout.addLayout(button_layout)
@@ -1571,6 +1741,7 @@ class BulkEmailWidget(QWidget):
             self.preview_table.resizeColumnsToContents()
             self.preview_btn.setEnabled(True)
             self.send_btn.setEnabled(True)
+            self.custom_email_btn.setEnabled(True)
             
             QApplication.restoreOverrideCursor()
             QMessageBox.information(self, "Batch Populated", f"Populated {len(self.current_batch)} cases for review.")
@@ -1909,6 +2080,7 @@ class BulkEmailWidget(QWidget):
                 self.current_batch = []
                 self.send_btn.setEnabled(False)
                 self.preview_btn.setEnabled(False)
+                self.custom_email_btn.setEnabled(False)
                 
                 # Update statistics and CMS card
                 self.update_statistics()
@@ -1922,6 +2094,126 @@ class BulkEmailWidget(QWidget):
             if 'progress_dialog' in locals():
                 progress_dialog.close()
             QMessageBox.critical(self, "Error", f"Failed to send batch: {str(e)}")
+    
+    def send_custom_batch(self):
+        """Send custom batch email to selected cases"""
+        try:
+            # Check if we have selected cases
+            selected_emails = []
+            for row in range(self.preview_table.rowCount()):
+                checkbox = self.preview_table.cellWidget(row, 8)  # Updated column
+                if checkbox and checkbox.isChecked():
+                    selected_emails.append(self.current_batch[row])
+            
+            if not selected_emails:
+                QMessageBox.warning(self, "No Selection", "Please select cases to send custom emails to.")
+                return
+            
+            # Create custom email dialog
+            dialog = CustomEmailDialog(len(selected_emails), self)
+            if dialog.exec_():
+                custom_body = dialog.get_custom_body()
+                
+                if not custom_body.strip():
+                    QMessageBox.warning(self, "Empty Email", "Email body cannot be empty.")
+                    return
+                
+                # Confirm sending
+                reply = QMessageBox.question(
+                    self, "Confirm Send",
+                    f"Send custom email to {len(selected_emails)} cases?\n"
+                    f"Mode: {'TEST' if self.bulk_service.test_mode else 'PRODUCTION'}",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                
+                if reply == QMessageBox.Yes:
+                    # Create progress dialog
+                    progress_dialog = QProgressDialog(
+                        "Sending custom emails...", "Cancel", 0, len(selected_emails), self
+                    )
+                    progress_dialog.setWindowTitle("Custom Email Progress")
+                    progress_dialog.setWindowModality(Qt.WindowModal)
+                    progress_dialog.setMinimumDuration(0)
+                    progress_dialog.setValue(0)
+                    
+                    # Log start of batch
+                    if self.parent_window:
+                        self.parent_window.log_activity(
+                            f"📧 Sending custom batch email to {len(selected_emails)} cases "
+                            f"({'TEST MODE' if self.bulk_service.test_mode else 'PRODUCTION'})"
+                        )
+                    
+                    # Send emails with custom body
+                    sent_emails = []
+                    failed_emails = []
+                    
+                    for i, email_data in enumerate(selected_emails):
+                        if progress_dialog.wasCanceled():
+                            break
+                        
+                        progress_dialog.setValue(i)
+                        progress_dialog.setLabelText(f"Sending to {email_data.get('name', 'Unknown')}...")
+                        QApplication.processEvents()
+                        
+                        # Generate new email with custom body
+                        case_data = email_data.get('case_data', {})
+                        custom_email = self.bulk_service.generate_email_content(case_data, custom_body=custom_body)
+                        
+                        # Send email
+                        try:
+                            msg_id = self.bulk_service.gmail_service.send_email(
+                                custom_email["to"],
+                                custom_email["subject"],
+                                custom_email["body"]
+                            )
+                            
+                            sent_emails.append(custom_email)
+                            
+                            # Update tracking if not in test mode
+                            if not self.bulk_service.test_mode:
+                                self.bulk_service.log_sent_email(custom_email, msg_id)
+                                self.bulk_service.session_sent_pids.add(custom_email['pv'])
+                            else:
+                                self.bulk_service.log_test_email(custom_email, msg_id)
+                            
+                            # Log to main activity
+                            if self.parent_window:
+                                self.parent_window.log_activity(
+                                    f"✅ Custom email sent to {custom_email['name']} - {custom_email['to']}"
+                                )
+                            
+                        except Exception as e:
+                            failed_emails.append({
+                                'pv': custom_email.get('pv', 'Unknown'),
+                                'error': str(e)
+                            })
+                            
+                            if self.parent_window:
+                                self.parent_window.log_activity(
+                                    f"❌ Failed to send custom email to PV {custom_email.get('pv', 'Unknown')}: {str(e)}"
+                                )
+                    
+                    progress_dialog.close()
+                    
+                    # Show results
+                    result_msg = f"Custom Email Batch Complete!\n\n"
+                    result_msg += f"✅ Successfully Sent: {len(sent_emails)} emails\n"
+                    result_msg += f"❌ Failed: {len(failed_emails)} emails\n\n"
+                    
+                    if failed_emails:
+                        result_msg += "Failed emails:\n"
+                        for fail in failed_emails[:5]:
+                            result_msg += f"  • PV {fail.get('pv', 'Unknown')}: {fail.get('error', 'Unknown error')}\n"
+                        if len(failed_emails) > 5:
+                            result_msg += f"  ... and {len(failed_emails) - 5} more\n"
+                    
+                    QMessageBox.information(self, "Batch Complete", result_msg)
+                    
+                    # Update statistics
+                    self.update_statistics()
+                    
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to send custom batch: {str(e)}")
     
     def export_batch(self):
         """Export batch to Excel"""

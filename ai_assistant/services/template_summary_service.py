@@ -80,7 +80,7 @@ class TemplateSummaryService:
             # Analyze the email patterns
             analysis = self._analyze_email_patterns(email_history)
             
-            # Extract email addresses from conversations
+            # Extract email addresses from conversations with enhanced context
             found_emails = self._extract_email_addresses(email_history)
             
             # Generate status determination
@@ -104,6 +104,7 @@ class TemplateSummaryService:
     def _get_email_history(self, pv: str, case_data: Dict = None) -> List[Dict]:
         """Get email history from cache - searching by patient NAME primarily"""
         emails = []
+        seen_ids = set()
         
         if self.email_cache:
             # IMPORTANT: Search by patient NAME first (not PV)
@@ -123,16 +124,48 @@ class TemplateSummaryService:
                     name_emails = self.email_cache.get_all_emails_for_case(patient_name)
                 
                 logger.info(f"Found {len(name_emails)} emails for {patient_name}")
-                emails.extend(name_emails)
+                for email in name_emails:
+                    email_id = email.get('id')
+                    if email_id and email_id not in seen_ids:
+                        seen_ids.add(email_id)
+                        emails.append(email)
+            
+            # Also search by CMS number if available
+            if case_data and case_data.get('CMS'):
+                cms_number = case_data.get('CMS')
+                cms_emails = self.email_cache.get_all_emails_for_case(cms_number)
+                logger.info(f"Found {len(cms_emails)} emails for CMS# {cms_number}")
+                for email in cms_emails:
+                    email_id = email.get('id')
+                    if email_id and email_id not in seen_ids:
+                        seen_ids.add(email_id)
+                        emails.append(email)
             
             # As a fallback, also try searching by PV (in case it's in Reference # line)
             if pv:
                 pv_emails = self.email_cache.get_case_emails(pv)
+                logger.info(f"Found {len(pv_emails)} emails for PV# {pv}")
                 # Add any PV-based emails not already found
-                existing_ids = {e.get('id') for e in emails}
                 for email in pv_emails:
-                    if email.get('id') and email.get('id') not in existing_ids:
+                    email_id = email.get('id')
+                    if email_id and email_id not in seen_ids:
+                        seen_ids.add(email_id)
                         emails.append(email)
+            
+            # Also search for variations of PV number (with/without leading zeros)
+            if pv and pv.isdigit():
+                pv_int = int(pv)
+                pv_variations = [str(pv_int), str(pv_int).zfill(6)]
+                for pv_var in pv_variations:
+                    if pv_var != pv:  # Don't search the same thing twice
+                        pv_var_emails = self.email_cache.get_case_emails(pv_var)
+                        for email in pv_var_emails:
+                            email_id = email.get('id')
+                            if email_id and email_id not in seen_ids:
+                                seen_ids.add(email_id)
+                                emails.append(email)
+        
+        logger.info(f"Total unique emails found for case: {len(emails)}")
         
         # Sort by date (newest first)
         emails.sort(key=lambda x: x.get('date', ''), reverse=True)
@@ -257,29 +290,69 @@ class TemplateSummaryService:
         
         return analysis
     
-    def _extract_email_addresses(self, emails: List[Dict]) -> Set[str]:
-        """Extract email addresses mentioned in email bodies"""
-        found_emails = set()
+    def _extract_email_addresses(self, emails: List[Dict]) -> Dict[str, Set[str]]:
+        """Extract email addresses mentioned in email bodies with context"""
+        found_emails = {
+            'redirect': set(),  # Emails they told us to use instead
+            'cc': set(),  # Emails mentioned as CC or additional contacts
+            'other': set()  # Other potentially relevant emails
+        }
         
         # Our own domains to exclude
-        exclude_domains = ['prohealth', 'transcon', 'gmail.com']
+        exclude_domains = ['prohealth', 'transcon', 'gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com']
         
         for email in emails:
-            # Check email body
+            # Check email body and subject
             body = email.get('body') or ''
             snippet = email.get('snippet') or ''
-            full_text = f"{body} {snippet}"
+            subject = email.get('subject') or ''
+            full_text = f"{subject} {body} {snippet}"
             
-            # Find all email addresses
+            # Also check the from/to/cc fields for law firm emails
+            from_addr = email.get('from') or ''
+            to_addr = email.get('to') or ''
+            cc_addr = email.get('cc') or ''
+            
+            # Extract CC emails if present
+            if cc_addr:
+                cc_matches = self.email_pattern.findall(cc_addr)
+                for cc_email in cc_matches:
+                    if not any(domain in cc_email.lower() for domain in exclude_domains[:3]):
+                        found_emails['cc'].add(cc_email.lower())
+            
+            # Find all email addresses in body/subject
             matches = self.email_pattern.findall(full_text)
             
             for match in matches:
-                # Filter out our own emails and common domains
+                # Filter out our own emails and common personal domains
                 if not any(domain in match.lower() for domain in exclude_domains):
                     # Look for context around the email
-                    context = self._get_email_context(full_text, match)
-                    if self._is_relevant_email(context):
-                        found_emails.add(match.lower())
+                    context = self._get_email_context(full_text, match).lower()
+                    
+                    # Check for redirect phrases
+                    redirect_phrases = [
+                        'please send', 'send to', 'forward to', 'contact',
+                        'email', 'reach out to', 'direct all', 'should be sent',
+                        'use', 'instead', 'not me', 'wrong person', 'correct email',
+                        'proper contact', 'handle this', 'responsible for'
+                    ]
+                    
+                    cc_phrases = ['cc', 'copy', 'include', 'also send']
+                    
+                    if any(phrase in context for phrase in redirect_phrases):
+                        found_emails['redirect'].add(match.lower())
+                    elif any(phrase in context for phrase in cc_phrases):
+                        found_emails['cc'].add(match.lower())
+                    elif self._is_relevant_email(context):
+                        found_emails['other'].add(match.lower())
+            
+            # Also extract from email headers if they're law firm emails
+            if from_addr and not any(domain in from_addr.lower() for domain in exclude_domains[:3]):
+                if '@' in from_addr:
+                    # This is a law firm email that responded to us
+                    email_match = self.email_pattern.search(from_addr)
+                    if email_match:
+                        found_emails['other'].add(email_match.group().lower())
         
         return found_emails
     
@@ -299,7 +372,9 @@ class TemplateSummaryService:
         """Check if email context suggests it's for correspondence"""
         relevant_phrases = [
             'email', 'contact', 'send', 'forward', 'correspondence',
-            'reach', 'reply', 'respond', 'cc', 'questions', 'inquir'
+            'reach', 'reply', 'respond', 'cc', 'questions', 'inquir',
+            'attorney', 'paralegal', 'assistant', 'office', 'firm',
+            'handle', 'responsible', 'managing'
         ]
         context_lower = context.lower()
         return any(phrase in context_lower for phrase in relevant_phrases)
@@ -431,7 +506,7 @@ class TemplateSummaryService:
     
     def _format_summary(self, pv: str, case_data: Dict, emails: List[Dict],
                        analysis: Dict, status: Dict, recommendations: List[str],
-                       found_emails: Set[str]) -> str:
+                       found_emails: Dict[str, Set[str]]) -> str:
         """Format the complete summary"""
         
         # Get case details
@@ -479,11 +554,14 @@ class TemplateSummaryService:
         # Communication Summary
         lines.append("COMMUNICATION SUMMARY")
         lines.append("-" * 40)
-        lines.append(f"Total Emails: {analysis.get('total_emails', 0)}")
-        lines.append(f"Emails Sent by Us: {analysis.get('emails_sent', 0)}")
-        lines.append(f"Attorney Responses: {analysis.get('emails_received', 0)}")
-        lines.append(f"Response Rate: {analysis.get('response_rate', 0):.1f}%")
-        lines.append(f"Unanswered Emails: {analysis.get('no_response_count', 0)}")
+        lines.append(f"Total Emails Found: {analysis.get('total_emails', 0)} 📧")
+        if analysis.get('total_emails', 0) > 0:
+            lines.append(f"  • Emails Sent by Us: {analysis.get('emails_sent', 0)}")
+            lines.append(f"  • Attorney Responses: {analysis.get('emails_received', 0)}")
+            lines.append(f"  • Response Rate: {analysis.get('response_rate', 0):.1f}%")
+            lines.append(f"  • Unanswered Emails: {analysis.get('no_response_count', 0)}")
+        else:
+            lines.append("  ⚠️ No emails found - may need to refresh email cache")
         
         if analysis.get('first_contact_date'):
             first_date = self._format_date(analysis['first_contact_date'])
@@ -562,14 +640,39 @@ class TemplateSummaryService:
             lines.append(f"{i}. {rec}")
         lines.append("")
         
-        # Email Addresses Found
-        if found_emails:
-            lines.append("EMAIL ADDRESSES FOUND IN CONVERSATIONS")
-            lines.append("-" * 40)
-            for email_addr in sorted(found_emails):
-                lines.append(f"  • {email_addr}")
+        # Email Addresses Found - Make this more prominent and organized
+        all_found = any(found_emails.get(cat) for cat in ['redirect', 'cc', 'other'])
+        if all_found:
+            lines.append("="*60)
+            lines.append("⚠️  IMPORTANT: EMAIL ADDRESSES FOUND IN CONVERSATIONS")
+            lines.append("="*60)
+            
+            if found_emails.get('redirect'):
+                lines.append("")
+                lines.append("🔄 REDIRECT REQUESTS (Law firm asked to use these instead):")
+                lines.append("-" * 40)
+                for email_addr in sorted(found_emails['redirect']):
+                    lines.append(f"  📧 {email_addr}")
+                lines.append("  ACTION: Consider using these emails for future correspondence")
+            
+            if found_emails.get('cc'):
+                lines.append("")
+                lines.append("📋 CC/ADDITIONAL CONTACTS:")
+                lines.append("-" * 40)
+                for email_addr in sorted(found_emails['cc']):
+                    lines.append(f"  • {email_addr}")
+            
+            if found_emails.get('other'):
+                lines.append("")
+                lines.append("📨 OTHER LAW FIRM EMAILS FOUND:")
+                lines.append("-" * 40)
+                for email_addr in sorted(found_emails['other']):
+                    lines.append(f"  • {email_addr}")
+            
             lines.append("")
-            lines.append("Note: Review context before using alternate email addresses")
+            lines.append("💡 TIP: Review the full email history below to see the context")
+            lines.append("         for these email addresses before using them.")
+            lines.append("="*60)
         
         # Footer
         lines.append("")

@@ -205,5 +205,77 @@
     "notes": "diff doi not handlked by this attorney ened to reach out to debtor and get aa info ",
     "snooze_days": 30,
     "review_after": "2025-09-28T22:11:00.702338"
+  },
+  "355820": {
+    "acknowledged_date": "2025-09-02T22:18:41.622760",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "NEW",
+    "notes": "no email provided need to call debtor or track down aa email addre",
+    "snooze_days": 30,
+    "review_after": "2025-10-02T22:18:41.622764"
+  },
+  "323759": {
+    "acknowledged_date": "2025-09-02T22:19:50.891551",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "NEW",
+    "notes": "file is paid need to send off for payment to house/243 ",
+    "snooze_days": 30,
+    "review_after": "2025-10-02T22:19:50.891557"
+  },
+  "287464": {
+    "acknowledged_date": "2025-09-03T21:37:51.694180",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Lien Not Signed",
+    "notes": "no email on file ",
+    "snooze_days": 30,
+    "review_after": "2025-10-03T21:37:51.694184"
+  },
+  "295607": {
+    "acknowledged_date": "2025-09-03T21:38:03.453393",
+    "acknowledged_by": "user",
+    "reason": "REVIEWED - No action needed",
+    "status": "Active",
+    "notes": "set rate ",
+    "snooze_days": 30,
+    "review_after": "2025-10-03T21:38:03.453397"
+  },
+  "339948": {
+    "acknowledged_date": "2025-09-03T21:40:58.907126",
+    "acknowledged_by": "user",
+    "reason": "REVIEWED - No action needed",
+    "status": "Lien Not Signed",
+    "notes": "firm states not their client will call debotr ",
+    "snooze_days": 30,
+    "review_after": "2025-10-03T21:40:58.907130"
+  },
+  "387273": {
+    "acknowledged_date": "2025-09-03T21:47:42.029731",
+    "acknowledged_by": "user",
+    "reason": "REVIEWED - No action needed",
+    "status": "Lien Not Signed",
+    "notes": "set rate attny no contact ",
+    "snooze_days": 90,
+    "review_after": "2025-12-02T21:47:42.029735"
+  },
+  "341365": {
+    "acknowledged_date": "2025-09-03T22:04:23.562990",
+    "acknowledged_by": "user",
+    "reason": "LITIGATION - Awaiting outcome",
+    "status": "Active",
+    "notes": "likely a lost cause ",
+    "snooze_days": 30,
+    "review_after": "2025-10-03T22:04:23.562994"
+  },
+  "392650": {
+    "acknowledged_date": "2025-09-03T22:07:31.097877",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Active",
+    "notes": "2024 doi not assigned to transcon ",
+    "snooze_days": 365,
+    "review_after": "2026-09-03T22:07:31.097881"
   }
 }

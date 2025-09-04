@@ -1,7 +1,7 @@
 {
-  "analysis_date": "2025-08-20T23:14:24.638087",
+  "analysis_date": "2025-09-03T22:10:20.714433",
   "total_emails_analyzed": 500,
-  "total_emails_cached": 13253,
+  "total_emails_cached": 13583,
   "average_frequency_days": 0.1,
   "common_subject_words": [
     "doi",
@@ -9,37 +9,37 @@
     "dob",
     "confirmation",
     "patient",
-    "file",
     "agreement",
+    "file",
     "lien",
     "request",
     "reduction"
   ],
   "style_patterns": {
-    "formal_language": 35.2,
-    "casual_language": 59.2,
-    "question_usage": 35.6,
-    "exclamation_usage": 1.0,
+    "formal_language": 34.8,
+    "casual_language": 58.4,
+    "question_usage": 35.2,
+    "exclamation_usage": 1.4,
     "average_length": 197.0
   },
   "greeting_patterns": [
-    "Hello Kiara Your clients lien balance is $529",
-    "Good morning, Thank you for your email",
-    "Hello Law Firm, In regards to Prohealth Advanced Imaging billing and liens for Rene Morales",
-    "Hi Law Firm, In regards to Prohealth Advanced Imaging billing and liens for Sheila Kaye Sing",
-    "Hello Law Firm, In regards to Prohealth Advanced Imaging billing and liens for Maria Caceres"
+    "Hello there, I received a request for billing records and updates for Delmy Martinez&#39; file",
+    "Hi Dean, I believe Edenilson Zelaya belongs to you",
+    "Hello there, I am writing to inform you that Prohealth accepts your lien reduction offer of $3000",
+    "Hello there, I was forwarded a lien reduction recquest from your office regarding this client",
+    "Hello Kinsey, I was forwarded a lien reduction request from your office in regards to this file"
   ],
   "closing_patterns": [
-    "Thank you.",
-    "I will build around anything he does.  Let the",
-    "Prohealth Billing and Liens Unit \u2022 Billing Specialist \u2022 Lien Representative P:(909) 342-7824 ext. 406 F:(909)-",
-    "-- Sincerely, Dean H.  Prohealth Billing and Liens Unit \u2022 Billing Specialist \u2022 Lien",
-    "---------- Forwarded message --------- From: Haik Beloryan &lt;hb@bmsllp. com&gt;"
+    "com California Debt Collection License Number 11165-99 NMLS P:909-219-6008 ext. 403 F:909-696-2939 *****",
+    "Prohealth Billing and Liens Unit \u2022 Billing Specialist \u2022 Lien Representative P:(909) 342-7824 ext. 406 F:(",
+    "I am writing to let you know that Prohealth accepts your offer of $600. 00",
+    "I will get in touch with the firm.  Thank you for this -- Sincerely, Dean H",
+    "Prohealth Billing and Liens Unit \u2022 Billing Specialist \u2022 Lien Representative P:(909) 342-7824 ext. 406 F:(909)-"
   ],
   "tone_indicators": {
-    "professional": 76.2,
-    "urgent": 0.6,
-    "friendly": 9.4,
-    "follow_up": 31.4
+    "professional": 75.2,
+    "urgent": 0.4,
+    "friendly": 9.6,
+    "follow_up": 28.6
   }
 }
