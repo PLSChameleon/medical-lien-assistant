@@ -141,6 +141,35 @@ class TemplateSummaryService:
                         seen_ids.add(email_id)
                         emails.append(email)
             
+            # IMPORTANT: Also search by attorney email to catch ALL emails from that law firm
+            # This ensures we catch fresh emails they send even if patient name isn't exact
+            if case_data and case_data.get('Attorney Email'):
+                attorney_email = case_data.get('Attorney Email')
+                if '@' in str(attorney_email):
+                    # Search for all emails from this attorney
+                    attorney_emails = []
+                    if self.email_cache and hasattr(self.email_cache, 'cache') and self.email_cache.cache.get('emails'):
+                        for email in self.email_cache.cache['emails']:
+                            from_addr = (email.get('from') or '').lower()
+                            to_addr = (email.get('to') or '').lower()
+                            # Check if this email is from or to the attorney
+                            if attorney_email.lower() in from_addr or attorney_email.lower() in to_addr:
+                                # Also verify it might be related to this patient (looser match)
+                                if case_data.get('Name'):
+                                    # Check if any part of the patient name appears
+                                    name_parts = case_data.get('Name').lower().split()
+                                    email_text = f"{email.get('subject', '')} {email.get('snippet', '')} {email.get('body', '')}".lower()
+                                    # If at least one name part matches, include it
+                                    if any(part in email_text for part in name_parts if len(part) > 2):
+                                        attorney_emails.append(email)
+                    
+                    logger.info(f"Found {len(attorney_emails)} additional emails from attorney {attorney_email}")
+                    for email in attorney_emails:
+                        email_id = email.get('id')
+                        if email_id and email_id not in seen_ids:
+                            seen_ids.add(email_id)
+                            emails.append(email)
+            
             # As a fallback, also try searching by PV (in case it's in Reference # line)
             if pv:
                 pv_emails = self.email_cache.get_case_emails(pv)
