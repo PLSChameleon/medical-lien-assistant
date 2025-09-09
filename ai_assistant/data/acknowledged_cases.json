@@ -277,5 +277,212 @@
     "notes": "2024 doi not assigned to transcon ",
     "snooze_days": 365,
     "review_after": "2026-09-03T22:07:31.097881"
+  },
+  "297748": {
+    "acknowledged_date": "2025-09-08T17:05:39.973909",
+    "acknowledged_by": "user",
+    "reason": "LITIGATION - Awaiting outcome",
+    "status": "Litigation",
+    "notes": "case in lit ",
+    "snooze_days": 90,
+    "review_after": "2025-12-07T17:05:39.973914"
+  },
+  "328554": {
+    "acknowledged_date": "2025-09-08T17:16:46.776204",
+    "acknowledged_by": "user",
+    "reason": "LITIGATION - Awaiting outcome",
+    "status": "Active",
+    "notes": "firm states not their client // need to call debtor ",
+    "snooze_days": 30,
+    "review_after": "2025-10-08T17:16:46.776208"
+  },
+  "376641": {
+    "acknowledged_date": "2025-09-08T17:18:00.576124",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Active",
+    "notes": "2024 doi assigned to tnlp skipping over file ",
+    "snooze_days": 365,
+    "review_after": "2026-09-08T17:18:00.576128"
+  },
+  "282498": {
+    "acknowledged_date": "2025-09-08T17:25:03.367691",
+    "acknowledged_by": "user",
+    "reason": "FIRM UNRESPONSIVE - Will retry later",
+    "status": "Active",
+    "notes": "Need to call this firm asap to get status and best email for contact ",
+    "snooze_days": 90,
+    "review_after": "2025-12-07T17:25:03.367695"
+  },
+  "365858": {
+    "acknowledged_date": "2025-09-08T17:29:04.893537",
+    "acknowledged_by": "user",
+    "reason": "FIRM UNRESPONSIVE - Will retry later",
+    "status": "Active",
+    "notes": "need to call into firm ",
+    "snooze_days": 90,
+    "review_after": "2025-12-07T17:29:04.893541"
+  },
+  "401142": {
+    "acknowledged_date": "2025-09-08T17:29:45.358595",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Lien Not Signed",
+    "notes": "2024 doi skipping bc charges not assigned to us ",
+    "snooze_days": 90,
+    "review_after": "2025-12-07T17:29:45.358599"
+  },
+  "377021": {
+    "acknowledged_date": "2025-09-08T17:30:48.980282",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Litigation",
+    "notes": "2024 doi charges not assigned to us ",
+    "snooze_days": 180,
+    "review_after": "2026-03-07T17:30:48.980286"
+  },
+  "329961": {
+    "acknowledged_date": "2025-09-08T17:32:21.982170",
+    "acknowledged_by": "user",
+    "reason": "LITIGATION - Awaiting outcome",
+    "status": "Litigation",
+    "notes": "awaiting payment as this is a set rate firm ",
+    "snooze_days": 90,
+    "review_after": "2025-12-07T17:32:21.982174"
+  },
+  "353737": {
+    "acknowledged_date": "2025-09-08T17:40:00.205472",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Active",
+    "notes": "file paid and closed ",
+    "snooze_days": 0,
+    "review_after": null
+  },
+  "131648": {
+    "acknowledged_date": "2025-09-08T17:43:26.333623",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Active",
+    "notes": "likely a lost cause attny is plaintiff and not responding ",
+    "snooze_days": 0,
+    "review_after": null
+  },
+  "20981": {
+    "acknowledged_date": "2025-09-08T17:47:06.982830",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Active",
+    "notes": "need to find attny contact info ",
+    "snooze_days": 0,
+    "review_after": null
+  },
+  "362997": {
+    "acknowledged_date": "2025-09-08T17:47:45.846675",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Active",
+    "notes": "fixed rate attny waiting for paymnet ",
+    "snooze_days": 90,
+    "review_after": "2025-12-07T17:47:45.846679"
+  },
+  "246399": {
+    "acknowledged_date": "2025-09-08T17:47:59.996088",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Active",
+    "notes": "no emial on file need to get email for firm",
+    "snooze_days": 0,
+    "review_after": null
+  },
+  "211154": {
+    "acknowledged_date": "2025-09-08T17:48:07.714725",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Active",
+    "notes": "no emial on file need to get email for firm",
+    "snooze_days": 0,
+    "review_after": null
+  },
+  "368538": {
+    "acknowledged_date": "2025-09-08T17:48:22.670558",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Active",
+    "notes": "no emial on file need to get email for firm",
+    "snooze_days": 0,
+    "review_after": null
+  },
+  "288277": {
+    "acknowledged_date": "2025-09-08T17:48:30.587806",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Active",
+    "notes": "no emial on file need to get email for firm",
+    "snooze_days": 0,
+    "review_after": null
+  },
+  "98162": {
+    "acknowledged_date": "2025-09-08T17:48:41.966044",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Active",
+    "notes": "no emial on file need to get email for firm",
+    "snooze_days": 0,
+    "review_after": null
+  },
+  "366560": {
+    "acknowledged_date": "2025-09-08T17:48:49.694989",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Hot",
+    "notes": "no emial on file need to get email for firm",
+    "snooze_days": 0,
+    "review_after": null
+  },
+  "353442": {
+    "acknowledged_date": "2025-09-08T17:48:56.726143",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Lien Not Signed",
+    "notes": "no emial on file need to get email for firm",
+    "snooze_days": 0,
+    "review_after": null
+  },
+  "279762": {
+    "acknowledged_date": "2025-09-08T17:49:04.567315",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Lien Not Signed",
+    "notes": "no emial on file need to get email for firm",
+    "snooze_days": 0,
+    "review_after": null
+  },
+  "347306": {
+    "acknowledged_date": "2025-09-08T17:49:10.935120",
+    "acknowledged_by": "user",
+    "reason": "LITIGATION - Awaiting outcome",
+    "status": "Lien Not Signed",
+    "notes": "no emial on file need to get email for firm",
+    "snooze_days": 0,
+    "review_after": null
+  },
+  "310179": {
+    "acknowledged_date": "2025-09-08T17:49:17.959798",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Lien Not Signed",
+    "notes": "no emial on file need to get email for firm",
+    "snooze_days": 0,
+    "review_after": null
+  },
+  "403658": {
+    "acknowledged_date": "2025-09-08T17:49:26.258448",
+    "acknowledged_by": "user",
+    "reason": "OTHER (specify below)",
+    "status": "Lien Not Signed",
+    "notes": "no emial on file need to get email for firm",
+    "snooze_days": 0,
+    "review_after": null
   }
 }

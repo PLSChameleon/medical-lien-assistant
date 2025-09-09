@@ -640,17 +640,17 @@ Thank you for your attention to this matter"""
                 QMessageBox.warning(self, "No Email", "No attorney email found for this case")
                 return
             
-            # Show email preview dialog
-            dialog = EmailPreviewDialog(attorney_email, subject, body, pv, self)
+            # Show email preview dialog using EmailDraftDialog
+            dialog = EmailDraftDialog(case, body, subject, None, self)
             dialog.setWindowTitle(f"CCP 335.1 Inquiry - {pv}")
             
             if dialog.exec_() and dialog.approved:
                 # Send the email
                 if self.parent_window and hasattr(self.parent_window, 'gmail_service'):
                     try:
-                        self.parent_window.gmail_service.send_message(
+                        self.parent_window.gmail_service.send_email(
                             dialog.recipient,
-                            dialog.email_subject,
+                            dialog.subject,
                             dialog.email_body
                         )
                         
