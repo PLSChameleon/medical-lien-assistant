@@ -659,12 +659,12 @@ Thank you for your attention to this matter"""
                         
                         # Add CMS note if available
                         if CMS_AVAILABLE and add_cms_note_for_email:
-                            add_cms_note_for_email(
-                                pv_number=pv,
-                                note_text=f"CCP 335.1 Inquiry sent to {dialog.recipient}",
-                                sent_to=dialog.recipient,
-                                email_type="ccp_335_1"
-                            )
+                            # add_cms_note_for_email expects: case_info (dict), email_type (str), recipient_email (str)
+                            asyncio.run(add_cms_note_for_email(
+                                case,  # Pass the full case dictionary
+                                "ccp_335_1",  # Email type
+                                dialog.recipient  # Recipient email
+                            ))
                         
                         QMessageBox.information(self, "Success", f"CCP 335.1 inquiry sent for {pv}")
                         
