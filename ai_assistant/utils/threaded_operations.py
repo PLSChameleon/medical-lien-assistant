@@ -282,7 +282,17 @@ class CollectionsAnalyzerWorker(QThread):
                         )
                     
                     self.progress_update.emit(100, "Analysis complete!")
-                    self.log_message.emit(f"✅ Analysis complete: {result.get('matched_activities', 0)} activities tracked")
+                    
+                    # Check if this was incremental or full analysis
+                    if result.get('already_up_to_date'):
+                        self.log_message.emit("✅ Already up to date - no new emails to process!")
+                    elif result.get('incremental') and result.get('skipped_emails', 0) > 0:
+                        self.log_message.emit(f"✅ Incremental analysis complete: {result.get('processed_emails', 0)} new emails processed")
+                        self.log_message.emit(f"   Skipped {result.get('skipped_emails', 0)} already-analyzed emails")
+                        self.log_message.emit(f"   Found {result.get('matched_activities', 0)} new activities")
+                    else:
+                        self.log_message.emit(f"✅ Full analysis complete: {result.get('matched_activities', 0)} activities tracked")
+                    
                     self.finished.emit(True, result)
                 else:
                     self.progress_update.emit(100, "Bootstrap complete")

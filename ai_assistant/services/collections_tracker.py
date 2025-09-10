@@ -72,7 +72,9 @@ class CollectionsTracker:
     
     def __init__(self):
         self.tracker_file = Config.get_file_path("data/collections_tracking.json")
+        self.processed_emails_file = Config.get_file_path("data/processed_emails.json")
         self.data = self._load_tracking_data()
+        self.processed_emails = self._load_processed_emails()
     
     def _load_tracking_data(self):
         """Load tracking data and stale cache from file"""
@@ -104,6 +106,70 @@ class CollectionsTracker:
         except Exception as e:
             logger.error(f"Error loading tracking data: {e}")
             return {"cases": {}, "firm_stats": {}}
+    
+    def _load_processed_emails(self):
+        """Load the set of already-processed email IDs"""
+        try:
+            if os.path.exists(self.processed_emails_file):
+                with open(self.processed_emails_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    # Convert list to set for O(1) lookups
+                    return set(data.get('processed_email_ids', []))
+            return set()
+        except Exception as e:
+            logger.error(f"Error loading processed emails: {e}")
+            return set()
+    
+    def _save_processed_emails(self):
+        """Save the set of processed email IDs"""
+        try:
+            os.makedirs(os.path.dirname(self.processed_emails_file), exist_ok=True)
+            # Convert set to list for JSON serialization
+            save_data = {
+                'processed_email_ids': list(self.processed_emails),
+                'last_updated': datetime.now().isoformat(),
+                'total_processed': len(self.processed_emails)
+            }
+            with open(self.processed_emails_file, 'w', encoding='utf-8') as f:
+                json.dump(save_data, f, indent=2)
+        except Exception as e:
+            logger.error(f"Error saving processed emails: {e}")
+    
+    def clear_processed_emails(self):
+        """Clear the processed emails cache to force a full re-analysis"""
+        self.processed_emails = set()
+        if os.path.exists(self.processed_emails_file):
+            try:
+                os.remove(self.processed_emails_file)
+                logger.info("Cleared processed emails cache")
+            except Exception as e:
+                logger.error(f"Error clearing processed emails file: {e}")
+        return True
+    
+    def get_processed_emails_stats(self):
+        """Get statistics about processed emails"""
+        return {
+            'total_processed': len(self.processed_emails),
+            'cache_file_exists': os.path.exists(self.processed_emails_file),
+            'last_updated': None
+        }
+        # Try to get last updated time
+        if os.path.exists(self.processed_emails_file):
+            try:
+                with open(self.processed_emails_file, 'r') as f:
+                    data = json.load(f)
+                    return {
+                        'total_processed': len(self.processed_emails),
+                        'cache_file_exists': True,
+                        'last_updated': data.get('last_updated')
+                    }
+            except:
+                pass
+        return {
+            'total_processed': len(self.processed_emails),
+            'cache_file_exists': False,
+            'last_updated': None
+        }
     
     def _save_tracking_data(self):
         """Save tracking data and stale cache to file"""
@@ -361,7 +427,7 @@ class CollectionsTracker:
             "top_responsive_firms": top_firms[:5]
         }
     
-    def bootstrap_from_email_cache(self, email_cache, case_manager, max_emails=500, progress_callback=None):
+    def bootstrap_from_email_cache(self, email_cache, case_manager, max_emails=500, progress_callback=None, incremental=True):
         """
         Bootstrap collections tracking from existing email cache
         Analyzes sent emails to populate case activity history
@@ -371,10 +437,17 @@ class CollectionsTracker:
             case_manager: CaseManager instance
             max_emails: Maximum number of emails to process (default 500)
             progress_callback: Optional callback function(current, total, message) for progress updates
+            incremental: If True, skip already-processed emails (default True)
         """
         if not email_cache or not email_cache.get("emails"):
             logger.warning("No email cache available for bootstrap")
             return
+        
+        # Check if we're doing incremental processing
+        if incremental and self.processed_emails:
+            logger.info(f"Incremental mode: {len(self.processed_emails)} emails already processed")
+        else:
+            logger.info(f"Full analysis mode: Processing all emails")
         
         logger.info(f"Bootstrapping collections tracker from email cache (max {max_emails} emails)...")
         
@@ -399,12 +472,43 @@ class CollectionsTracker:
         matched_count = 0
         matched_by_name = 0
         matched_by_pv = 0
+        skipped_count = 0
+        new_emails_count = 0
         
-        # Analyze each sent email (limit to max_emails for performance)
-        if max_emails:
-            emails_to_process = list(email_cache["emails"])[:max_emails]
+        # Filter emails based on incremental mode
+        all_emails = email_cache["emails"]
+        emails_to_process = []
+        
+        if incremental:
+            # Only process emails that haven't been processed before
+            for email in all_emails:
+                email_id = email.get("id")
+                if email_id and email_id not in self.processed_emails:
+                    emails_to_process.append(email)
+                    new_emails_count += 1
+                else:
+                    skipped_count += 1
+            
+            # Apply max_emails limit to NEW emails only
+            if max_emails and len(emails_to_process) > max_emails:
+                emails_to_process = emails_to_process[:max_emails]
+                
+            logger.info(f"Found {new_emails_count} new emails to process, skipping {skipped_count} already-processed emails")
         else:
-            emails_to_process = email_cache["emails"]  # Process ALL emails
+            # Process all emails (full re-analysis)
+            if max_emails:
+                emails_to_process = list(all_emails)[:max_emails]
+            else:
+                emails_to_process = all_emails
+        
+        if not emails_to_process:
+            logger.info("No new emails to process - analysis already up to date!")
+            return {
+                "processed_emails": 0,
+                "matched_activities": 0,
+                "skipped_emails": skipped_count,
+                "already_up_to_date": True
+            }
         
         logger.info(f"Processing {len(emails_to_process)} emails...")
         
@@ -427,6 +531,9 @@ class CollectionsTracker:
         
         for idx, email in enumerate(emails_to_process):
             try:
+                # Get email ID for tracking
+                email_id = email.get("id")
+                
                 # Provide progress updates
                 if progress_callback and idx % 100 == 0:
                     progress_percent = int((idx / len(emails_to_process)) * 80) + 10  # 10-90% range
@@ -441,6 +548,10 @@ class CollectionsTracker:
                 
                 # Don't skip any emails - process ALL to find ALL cases
                 processed_count += 1
+                
+                # Add to processed emails set
+                if email_id:
+                    self.processed_emails.add(email_id)
                 
                 email_text = subject + " " + snippet
                 matched_pvs = set()  # Use set to avoid duplicates
@@ -544,13 +655,22 @@ class CollectionsTracker:
         # Save the populated data
         self._save_tracking_data()
         
+        # Save the processed emails list for incremental updates
+        self._save_processed_emails()
+        
         # Single summary log instead of multiple print statements
-        logger.info(f"Bootstrap complete: processed {processed_count} emails, matched {matched_count} activities (by name: {matched_by_name}, by PV: {matched_by_pv})")
+        if incremental and skipped_count > 0:
+            logger.info(f"Incremental bootstrap complete: processed {processed_count} new emails (skipped {skipped_count} already-processed), matched {matched_count} activities")
+        else:
+            logger.info(f"Bootstrap complete: processed {processed_count} emails, matched {matched_count} activities (by name: {matched_by_name}, by PV: {matched_by_pv})")
         
         return {
             "processed_emails": processed_count,
             "matched_activities": matched_count,
-            "cases_tracked": len([pv for pv, case in self.data["cases"].items() if case["activities"]])
+            "cases_tracked": len([pv for pv, case in self.data["cases"].items() if case["activities"]]),
+            "skipped_emails": skipped_count,
+            "new_emails": new_emails_count,
+            "incremental": incremental
         }
     
     def _is_collections_email(self, subject, snippet):

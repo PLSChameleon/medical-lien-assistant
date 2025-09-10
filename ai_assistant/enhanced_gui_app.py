@@ -5075,9 +5075,20 @@ Case Aging:
     
     def bootstrap_collections(self):
         """Bootstrap collections tracker"""
+        # Check if we have processed emails already
+        processed_stats = None
+        incremental_info = ""
+        if hasattr(self.collections_tracker, 'get_processed_emails_stats'):
+            processed_stats = self.collections_tracker.get_processed_emails_stats()
+            if processed_stats.get('total_processed', 0) > 0:
+                incremental_info = f"\n\n📊 Previous Analysis Found:\n"
+                incremental_info += f"• {processed_stats['total_processed']} emails already analyzed\n"
+                incremental_info += f"• Will only process NEW emails (much faster!)\n"
+                incremental_info += f"\nTo re-analyze ALL emails, use 'Clear Cache' first."
+        
         reply = QMessageBox.question(
             self, "Analyze Email Cache",
-            "This will analyze your cached emails to track case correspondence and identify patterns.\nMake sure you've downloaded email history first.\nProceed?",
+            f"This will analyze your cached emails to track case correspondence and identify patterns.\nMake sure you've downloaded email history first.{incremental_info}\nProceed?",
             QMessageBox.Yes | QMessageBox.No
         )
         
@@ -5168,13 +5179,43 @@ Case Aging:
         self.log_activity(f"Collections analysis error: {error}")
     
     def clear_cache(self):
-        """Clear category cache"""
-        try:
-            self.collections_tracker.clear_stale_cache()
-            QMessageBox.information(self, "Success", "Cache cleared!")
-            self.log_activity("Cleared category cache")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to clear cache: {str(e)}")
+        """Clear email and analysis cache"""
+        # Check if we have processed emails
+        has_processed = False
+        if hasattr(self.collections_tracker, 'get_processed_emails_stats'):
+            stats = self.collections_tracker.get_processed_emails_stats()
+            has_processed = stats.get('total_processed', 0) > 0
+        
+        message = "This will clear:\n• Category cache\n• Email cache"
+        if has_processed:
+            message += f"\n• Analysis tracking ({stats.get('total_processed', 0)} processed emails)"
+            message += "\n\nNext analysis will process ALL emails (slower but complete)."
+        message += "\n\nContinue?"
+        
+        reply = QMessageBox.question(
+            self, "Clear All Caches", 
+            message,
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            try:
+                # Clear category cache
+                if hasattr(self.collections_tracker, 'clear_stale_cache'):
+                    self.collections_tracker.clear_stale_cache()
+                
+                # Clear processed emails tracking
+                if hasattr(self.collections_tracker, 'clear_processed_emails'):
+                    self.collections_tracker.clear_processed_emails()
+                
+                # Clear email cache if available
+                if self.email_cache_service:
+                    self.email_cache_service.clear_cache()
+                
+                QMessageBox.information(self, "Success", "All caches cleared!")
+                self.log_activity("Cleared all caches (category, email, analysis tracking)")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to clear cache: {str(e)}")
     
     def init_cms_session(self):
         """Initialize CMS session"""
