@@ -245,20 +245,29 @@ class CollectionsAnalyzerWorker(QThread):
             cases_df = self.case_manager.df
             total_cases = len(cases_df)
             
-            self.log_message.emit(f"📊 Starting analysis...")
-            self.log_message.emit(f"📧 Found {total_emails} cached emails")
-            self.log_message.emit(f"📁 Found {total_cases} cases to analyze")
+            self.log_message.emit(f"📊 Starting analysis of {total_emails} emails...")
             self.progress_update.emit(5, f"Analyzing {total_emails} emails against {total_cases} cases...")
             
             # Use bootstrap_from_email_cache if available
             if hasattr(self.tracker, 'bootstrap_from_email_cache'):
-                self.progress_update.emit(10, "Running bootstrap analysis...")
+                self.progress_update.emit(10, "Processing emails (this may take a few minutes for large caches)...")
                 
-                # Bootstrap from the email cache
+                # For very large email caches, provide warning
+                if total_emails > 10000:
+                    self.log_message.emit(f"⚠️ Large email cache ({total_emails} emails). Processing may take several minutes...")
+                elif total_emails > 5000:
+                    self.log_message.emit(f"Processing {total_emails} emails, this may take a minute...")
+                
+                # Create progress callback
+                def update_progress(percent, message):
+                    self.progress_update.emit(percent, message)
+                
+                # Bootstrap from the email cache with progress updates
                 result = self.tracker.bootstrap_from_email_cache(
                     self.tracker.email_cache.cache,
                     self.case_manager,
-                    max_emails=None  # Process all emails
+                    max_emails=None,  # Process all emails for accuracy
+                    progress_callback=update_progress
                 )
                 
                 if result:

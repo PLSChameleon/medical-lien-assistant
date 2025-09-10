@@ -1,45 +1,45 @@
 {
-  "analysis_date": "2025-09-03T22:10:20.714433",
+  "analysis_date": "2025-09-09T20:53:58.770358",
   "total_emails_analyzed": 500,
-  "total_emails_cached": 13583,
+  "total_emails_cached": 13762,
   "average_frequency_days": 0.1,
   "common_subject_words": [
     "doi",
     "prohealth",
     "dob",
+    "agreement",
     "confirmation",
     "patient",
-    "agreement",
     "file",
     "lien",
-    "request",
-    "reduction"
+    "reduction",
+    "imaging"
   ],
   "style_patterns": {
-    "formal_language": 34.8,
-    "casual_language": 58.4,
+    "formal_language": 37.2,
+    "casual_language": 55.2,
     "question_usage": 35.2,
-    "exclamation_usage": 1.4,
-    "average_length": 197.0
+    "exclamation_usage": 1.6,
+    "average_length": 196.0
   },
   "greeting_patterns": [
-    "Hello there, I received a request for billing records and updates for Delmy Martinez&#39; file",
-    "Hi Dean, I believe Edenilson Zelaya belongs to you",
-    "Hello there, I am writing to inform you that Prohealth accepts your lien reduction offer of $3000",
-    "Hello there, I was forwarded a lien reduction recquest from your office regarding this client",
-    "Hello Kinsey, I was forwarded a lien reduction request from your office in regards to this file"
+    "Hello again, I am reaching out requesting the status of payment at this time",
+    "Hello again, I am following up requesting the status of payment at this time",
+    "Hello, Please see below",
+    "Hello Kaveh Law, Thank you for reaching out to me and I would be glad to help you with this request",
+    "Hello again Azizian Law, I apologize for the delayed response"
   ],
   "closing_patterns": [
-    "com California Debt Collection License Number 11165-99 NMLS P:909-219-6008 ext. 403 F:909-696-2939 *****",
-    "Prohealth Billing and Liens Unit \u2022 Billing Specialist \u2022 Lien Representative P:(909) 342-7824 ext. 406 F:(",
-    "I am writing to let you know that Prohealth accepts your offer of $600. 00",
-    "I will get in touch with the firm.  Thank you for this -- Sincerely, Dean H",
-    "Prohealth Billing and Liens Unit \u2022 Billing Specialist \u2022 Lien Representative P:(909) 342-7824 ext. 406 F:(909)-"
+    "-- Sincerely, Dean H.  Prohealth Billing and Liens Unit \u2022 Billing Specialist \u2022",
+    "00 to settle this file.  If",
+    "-- Sincerely, Dean H.  Prohealth Billing and Liens Unit \u2022 Billing Specialist \u2022 Lien Representative P:(909) 342-7824",
+    "Prohealth Billing and Liens Unit \u2022 Billing Specialist \u2022 Lien Representative P:(909) 342-7824 ext. 406 F:(909)-696-2939 ---------- Forwarded",
+    "Reference #: CP100114006 -- Sincerely, Dean H.  Prohealth Billing and Liens Unit \u2022 Billing Specialist \u2022 Lien Representative P:(909) 342"
   ],
   "tone_indicators": {
-    "professional": 75.2,
+    "professional": 77.8,
     "urgent": 0.4,
-    "friendly": 9.6,
-    "follow_up": 28.6
+    "friendly": 10.6,
+    "follow_up": 27.4
   }
 }

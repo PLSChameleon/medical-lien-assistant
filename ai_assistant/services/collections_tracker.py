@@ -361,7 +361,7 @@ class CollectionsTracker:
             "top_responsive_firms": top_firms[:5]
         }
     
-    def bootstrap_from_email_cache(self, email_cache, case_manager, max_emails=500):
+    def bootstrap_from_email_cache(self, email_cache, case_manager, max_emails=500, progress_callback=None):
         """
         Bootstrap collections tracking from existing email cache
         Analyzes sent emails to populate case activity history
@@ -370,6 +370,7 @@ class CollectionsTracker:
             email_cache: The email cache dictionary
             case_manager: CaseManager instance
             max_emails: Maximum number of emails to process (default 500)
+            progress_callback: Optional callback function(current, total, message) for progress updates
         """
         if not email_cache or not email_cache.get("emails"):
             logger.warning("No email cache available for bootstrap")
@@ -407,10 +408,32 @@ class CollectionsTracker:
         
         logger.info(f"Processing {len(emails_to_process)} emails...")
         
+        # Pre-compile search patterns for better performance
+        import re
+        pv_pattern = re.compile(r'\b\d{4,6}\b')  # PV numbers are 4-6 digits
+        
+        # Build a name lookup for faster matching
+        name_to_pvs = {}
+        for pv, case_info in case_data.items():
+            patient_name = str(case_info.get("name", "")).strip().lower()
+            if patient_name:
+                # Store both full name and individual parts
+                name_to_pvs.setdefault(patient_name, []).append(pv)
+                name_parts = patient_name.split()
+                if len(name_parts) >= 2:
+                    # Also index by last name for faster lookup
+                    last_name = name_parts[-1]
+                    name_to_pvs.setdefault(last_name, []).append(pv)
+        
         for idx, email in enumerate(emails_to_process):
             try:
-                # Log progress for large batches
-                if idx > 0 and idx % 1000 == 0:
+                # Provide progress updates
+                if progress_callback and idx % 100 == 0:
+                    progress_percent = int((idx / len(emails_to_process)) * 80) + 10  # 10-90% range
+                    progress_callback(progress_percent, f"Processing email {idx}/{len(emails_to_process)}...")
+                
+                # Reduce logging frequency - only log every 5000 emails instead of 1000
+                if idx > 0 and idx % 5000 == 0:
                     logger.info(f"Processed {idx}/{len(emails_to_process)} emails, found {matched_count} matches so far...")
                 
                 subject = email.get("subject", "").lower()
@@ -422,49 +445,28 @@ class CollectionsTracker:
                 email_text = subject + " " + snippet
                 matched_pvs = set()  # Use set to avoid duplicates
                 
-                # FIRST: Try to match by patient NAME (primary method)
-                for pv, case_info in case_data.items():
-                    patient_name = str(case_info.get("name", "")).strip()
-                    # Handle DOI as either string or datetime
-                    doi_value = case_info.get("doi", "")
-                    if hasattr(doi_value, 'strftime'):
-                        # It's a datetime object
-                        patient_doi = doi_value.strftime("%m/%d/%Y")
-                    else:
-                        # It's a string or other type
-                        patient_doi = str(doi_value).strip()
-                    
-                    if not patient_name:
-                        continue
-                    
-                    # Check if patient name appears in email
-                    name_parts = patient_name.split()
-                    name_found = False
-                    
-                    if len(name_parts) >= 2:
-                        first_name = name_parts[0].lower()
-                        last_name = name_parts[-1].lower()
-                        
-                        # Check various name formats
-                        if (patient_name.lower() in email_text or 
-                            (first_name in email_text and last_name in email_text)):
-                            name_found = True
-                    else:
-                        # Single name
-                        if patient_name.lower() in email_text:
-                            name_found = True
-                    
-                    if name_found:
-                        # If multiple patients might have same name, check DOI
-                        if patient_doi and 'doi' in email_text:
-                            # Try to match DOI to disambiguate
-                            doi_parts = patient_doi.replace('-', '/').replace('.', '/').split('/')
-                            # Check if DOI components appear in email
-                            if any(part in email_text for part in doi_parts if len(part) >= 2 and part.isdigit()):
+                # OPTIMIZED: Use name lookup for faster matching
+                # Extract potential names from email text
+                words_in_email = set(email_text.split())
+                
+                # Check for any indexed names in the email
+                for word in words_in_email:
+                    if word in name_to_pvs:
+                        # Found a potential match - verify it's actually the patient
+                        potential_pvs = name_to_pvs[word]
+                        for pv in potential_pvs:
+                            case_info = case_data[pv]
+                            patient_name = str(case_info.get("name", "")).strip().lower()
+                            
+                            # Verify full name match or first+last name match
+                            if patient_name in email_text:
                                 matched_pvs.add(pv)
-                        else:
-                            # No DOI conflict or DOI not mentioned
-                            matched_pvs.add(pv)
+                            else:
+                                # Check if both first and last name appear
+                                name_parts = patient_name.split()
+                                if len(name_parts) >= 2:
+                                    if all(part in email_text for part in name_parts):
+                                        matched_pvs.add(pv)
                 
                 # Track if we matched by name
                 if matched_pvs:
@@ -472,8 +474,9 @@ class CollectionsTracker:
                 
                 # SECOND: If no matches by name, try PV numbers as fallback
                 if not matched_pvs:
-                    pv_numbers = self._extract_pv_numbers(email_text)
-                    for pv in pv_numbers:
+                    # Use pre-compiled regex for faster PV extraction
+                    potential_pvs = pv_pattern.findall(email_text)
+                    for pv in potential_pvs:
                         if pv in case_data:
                             matched_pvs.add(pv)
                             matched_by_pv += 1
@@ -541,10 +544,8 @@ class CollectionsTracker:
         # Save the populated data
         self._save_tracking_data()
         
+        # Single summary log instead of multiple print statements
         logger.info(f"Bootstrap complete: processed {processed_count} emails, matched {matched_count} activities (by name: {matched_by_name}, by PV: {matched_by_pv})")
-        print(f"✅ Collections tracker populated with {matched_count} historical activities from {processed_count} emails")
-        print(f"   Matched by patient name: {matched_by_name}")
-        print(f"   Matched by PV number: {matched_by_pv}")
         
         return {
             "processed_emails": processed_count,
